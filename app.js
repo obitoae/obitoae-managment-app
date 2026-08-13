@@ -1009,13 +1009,13 @@ function renderDashboard() {
   const alertBox = document.getElementById("alert-concentracion");
   if (entries.length && entries[0].pct > 0.5) {
     alertBox.hidden = false;
-    alertBox.className = "alert-box";
+    alertBox.className = "alert-box ing-amount";
     alertBox.textContent = `Alta dependencia de ingresos: ${entries[0].name} representa ${Math.round(
       entries[0].pct * 100
     )}% de lo que has facturado — si ese cliente se va, el golpe es grande. Vale la pena diversificar.`;
   } else if (entries.length) {
     alertBox.hidden = false;
-    alertBox.className = "alert-box alert-ok";
+    alertBox.className = "alert-box alert-ok ing-amount";
     alertBox.textContent = "Tus ingresos están razonablemente repartidos entre clientes — ninguno representa más de la mitad del total.";
   } else {
     alertBox.hidden = true;
