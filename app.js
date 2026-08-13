@@ -116,39 +116,22 @@ function renderClientesView() {
       <td>${c.name}</td>
       <td>${c.notes || ""}</td>
       <td>${c.active ? "Sí" : "No"}</td>
-      <td>
-        <button class="btn-edit" data-id="${c.id}" data-kind="clients">Editar</button>
-        <button class="btn-delete" data-id="${c.id}" data-kind="clients">Eliminar</button>
-      </td>
+      <td><button class="btn-delete" data-id="${c.id}" data-kind="clients">Eliminar</button></td>
     </tr>`
     )
     .join("");
 }
 
-function resetClienteForm() {
-  document.getElementById("form-cliente").reset();
-  document.getElementById("cliente-id").value = "";
-  document.getElementById("cliente-submit-btn").textContent = "Agregar";
-  document.getElementById("cliente-cancel-btn").hidden = true;
-}
-
 document.getElementById("form-cliente").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const id = document.getElementById("cliente-id").value;
   const name = document.getElementById("cliente-nombre").value.trim();
   const notes = document.getElementById("cliente-notas").value.trim();
   if (!name) return;
-  if (id) {
-    await supabase.from("clients").update({ name, notes }).eq("id", id);
-  } else {
-    await supabase.from("clients").insert({ name, notes });
-  }
-  resetClienteForm();
+  await supabase.from("clients").insert({ name, notes });
+  document.getElementById("form-cliente").reset();
   await loadAll();
   renderAll();
 });
-
-document.getElementById("cliente-cancel-btn").addEventListener("click", resetClienteForm);
 
 // ============================================================
 // INGRESOS
@@ -169,26 +152,14 @@ function renderIngresosView() {
       <td>${money(i.iva)}</td>
       <td>${i.payment_method || ""}</td>
       <td>${i.is_recurring ? "Sí" : "No"}</td>
-      <td>
-        <button class="btn-edit" data-id="${i.id}" data-kind="income">Editar</button>
-        <button class="btn-delete" data-id="${i.id}" data-kind="income">Eliminar</button>
-      </td>
+      <td><button class="btn-delete" data-id="${i.id}" data-kind="income">Eliminar</button></td>
     </tr>`
     )
     .join("");
 }
 
-function resetIngresoForm() {
-  document.getElementById("form-ingreso").reset();
-  document.getElementById("ingreso-id").value = "";
-  document.getElementById("ingreso-fecha").value = todayISO();
-  document.getElementById("ingreso-submit-btn").textContent = "Registrar ingreso";
-  document.getElementById("ingreso-cancel-btn").hidden = true;
-}
-
 document.getElementById("form-ingreso").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const id = document.getElementById("ingreso-id").value;
   const row = {
     client_id: document.getElementById("ingreso-cliente").value,
     service: document.getElementById("ingreso-servicio").value.trim(),
@@ -199,28 +170,12 @@ document.getElementById("form-ingreso").addEventListener("submit", async (e) => 
     is_recurring: document.getElementById("ingreso-recurrente").checked,
     date: document.getElementById("ingreso-fecha").value,
   };
-  if (id) {
-    await supabase.from("income").update(row).eq("id", id);
-  } else {
-    await supabase.from("income").insert(row);
-  }
-  resetIngresoForm();
+  await supabase.from("income").insert(row);
+  e.target.reset();
+  document.getElementById("ingreso-fecha").value = todayISO();
   await loadAll();
   renderAll();
 });
-
-document.getElementById("ingreso-cancel-btn").addEventListener("click", resetIngresoForm);
-
-// ---- Conversor EUR -> MXN (solo ayuda a llenar el Monto, no se guarda aparte) ----
-function actualizarMontoDesdeEuros() {
-  const eur = parseFloat(document.getElementById("ingreso-eur-monto").value);
-  const tc = parseFloat(document.getElementById("ingreso-eur-tc").value);
-  if (eur > 0 && tc > 0) {
-    document.getElementById("ingreso-monto").value = (eur * tc).toFixed(2);
-  }
-}
-document.getElementById("ingreso-eur-monto").addEventListener("input", actualizarMontoDesdeEuros);
-document.getElementById("ingreso-eur-tc").addEventListener("input", actualizarMontoDesdeEuros);
 
 // ============================================================
 // GASTOS
@@ -240,26 +195,14 @@ function renderGastosView() {
       <td>${money(g.amount)}</td>
       <td>${g.recurrence}</td>
       <td>${g.payment_method || ""}</td>
-      <td>
-        <button class="btn-edit" data-id="${g.id}" data-kind="expenses">Editar</button>
-        <button class="btn-delete" data-id="${g.id}" data-kind="expenses">Eliminar</button>
-      </td>
+      <td><button class="btn-delete" data-id="${g.id}" data-kind="expenses">Eliminar</button></td>
     </tr>`
     )
     .join("");
 }
 
-function resetGastoForm() {
-  document.getElementById("form-gasto").reset();
-  document.getElementById("gasto-id").value = "";
-  document.getElementById("gasto-fecha").value = todayISO();
-  document.getElementById("gasto-submit-btn").textContent = "Registrar gasto";
-  document.getElementById("gasto-cancel-btn").hidden = true;
-}
-
 document.getElementById("form-gasto").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const id = document.getElementById("gasto-id").value;
   const clientId = document.getElementById("gasto-cliente").value;
   const row = {
     description: document.getElementById("gasto-descripcion").value.trim(),
@@ -271,67 +214,11 @@ document.getElementById("form-gasto").addEventListener("submit", async (e) => {
     payment_method: document.getElementById("gasto-metodo").value,
     date: document.getElementById("gasto-fecha").value,
   };
-  if (id) {
-    await supabase.from("expenses").update(row).eq("id", id);
-  } else {
-    await supabase.from("expenses").insert(row);
-  }
-  resetGastoForm();
+  await supabase.from("expenses").insert(row);
+  e.target.reset();
+  document.getElementById("gasto-fecha").value = todayISO();
   await loadAll();
   renderAll();
-});
-
-document.getElementById("gasto-cancel-btn").addEventListener("click", resetGastoForm);
-
-// ============================================================
-// EDITAR (delegado, carga el registro en su formulario)
-// ============================================================
-document.addEventListener("click", (e) => {
-  if (!e.target.matches(".btn-edit")) return;
-  const { id, kind } = e.target.dataset;
-
-  if (kind === "clients") {
-    const c = state.clients.find((x) => x.id === id);
-    if (!c) return;
-    document.getElementById("cliente-id").value = c.id;
-    document.getElementById("cliente-nombre").value = c.name;
-    document.getElementById("cliente-notas").value = c.notes || "";
-    document.getElementById("cliente-submit-btn").textContent = "Guardar cambios";
-    document.getElementById("cliente-cancel-btn").hidden = false;
-    document.getElementById("form-cliente").scrollIntoView({ behavior: "smooth", block: "center" });
-  } else if (kind === "income") {
-    const i = state.income.find((x) => x.id === id);
-    if (!i) return;
-    document.getElementById("ingreso-id").value = i.id;
-    document.getElementById("ingreso-cliente").value = i.client_id;
-    document.getElementById("ingreso-servicio").value = i.service;
-    document.getElementById("ingreso-tipo").value = i.type;
-    document.getElementById("ingreso-monto").value = i.amount;
-    document.getElementById("ingreso-iva").value = i.iva;
-    document.getElementById("ingreso-metodo").value = i.payment_method;
-    document.getElementById("ingreso-fecha").value = i.date;
-    document.getElementById("ingreso-recurrente").checked = i.is_recurring;
-    document.getElementById("ingreso-eur-monto").value = "";
-    document.getElementById("ingreso-eur-tc").value = "";
-    document.getElementById("ingreso-submit-btn").textContent = "Guardar cambios";
-    document.getElementById("ingreso-cancel-btn").hidden = false;
-    document.getElementById("form-ingreso").scrollIntoView({ behavior: "smooth", block: "center" });
-  } else if (kind === "expenses") {
-    const g = state.expenses.find((x) => x.id === id);
-    if (!g) return;
-    document.getElementById("gasto-id").value = g.id;
-    document.getElementById("gasto-descripcion").value = g.description;
-    document.getElementById("gasto-categoria").value = g.category;
-    document.getElementById("gasto-cliente").value = g.client_id || "";
-    document.getElementById("gasto-detalle").value = g.detail || "";
-    document.getElementById("gasto-monto").value = g.amount;
-    document.getElementById("gasto-recurrencia").value = g.recurrence;
-    document.getElementById("gasto-metodo").value = g.payment_method;
-    document.getElementById("gasto-fecha").value = g.date;
-    document.getElementById("gasto-submit-btn").textContent = "Guardar cambios";
-    document.getElementById("gasto-cancel-btn").hidden = false;
-    document.getElementById("form-gasto").scrollIntoView({ behavior: "smooth", block: "center" });
-  }
 });
 
 // ============================================================
