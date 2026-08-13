@@ -1,517 +1,1167 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Obitoae Management</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
-</head>
-<body>
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, PRIVACY_PASSWORD } from "./config.js";
 
-<!-- ============== PANTALLA DE LOGIN ============== -->
-<div id="login-screen" class="login-screen">
-  <div class="login-card">
-    <h1 class="brand-title">Obitoae Management</h1>
-    <p class="brand-subtitle">Clientes, ingresos y gastos en un solo lugar.</p>
-    <form id="login-form">
-      <label>Correo</label>
-      <input type="email" id="login-email" required autocomplete="username">
-      <label>Contraseña</label>
-      <input type="password" id="login-password" required autocomplete="current-password">
-      <button type="submit" class="btn btn-primary btn-block">Entrar</button>
-      <p id="login-error" class="error-text" hidden></p>
-    </form>
-  </div>
-</div>
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-<!-- ============== APP ============== -->
-<div id="app" class="app" hidden>
+const money = (n) =>
+  "$" + (Number(n) || 0).toLocaleString("es-MX", { maximumFractionDigits: 0 });
 
-  <aside class="sidebar">
-    <div class="sidebar-brand">Obitoae<br>Management</div>
-    <nav class="sidebar-nav">
-      <button class="nav-item active" data-view="dashboard">Panel</button>
-      <button class="nav-item" data-view="clientes">Clientes</button>
+const todayISO = () => new Date().toISOString().slice(0, 10);
+const currentPeriodKey = () => new Date().toISOString().slice(0, 7); // "YYYY-MM"
 
-      <div class="nav-group">
-        <button class="nav-group-header" data-group="tareas">
-          <span>Tareas</span><span class="nav-group-caret">▾</span>
-        </button>
-        <div class="nav-group-items">
-          <button class="nav-item nav-subitem" data-view="tareas">Tablero</button>
-          <button class="nav-item nav-subitem" data-view="tareas-historico">Histórico</button>
-        </div>
+const MESES_ES = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+];
+function formatMes(mesKey) {
+  const [anio, mes] = mesKey.split("-");
+  return `${MESES_ES[parseInt(mes, 10) - 1]} ${anio}`;
+}
+
+// ---- Cortes de tarjeta de crédito (cierran el día 26 de cada mes) ----
+function cortePeriodKey(dateStr) {
+  if (!dateStr) return null;
+  const [y, m, d] = dateStr.split("-").map(Number);
+  let year = y;
+  let month = m; // 1-12
+  if (d > 26) {
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+  }
+  return `${year}-${String(month).padStart(2, "0")}`;
+}
+
+function currentCorteKey() {
+  return cortePeriodKey(todayISO());
+}
+
+function corteRangeLabel(periodKey) {
+  const [y, m] = periodKey.split("-").map(Number);
+  let prevMonth = m - 1;
+  let prevYear = y;
+  if (prevMonth < 1) {
+    prevMonth = 12;
+    prevYear -= 1;
+  }
+  return `Corte del 27 de ${MESES_ES[prevMonth - 1]} al 26 de ${MESES_ES[m - 1]} ${y}`;
+}
+
+let state = { clients: [], income: [], expenses: [], tasks: [], savingsFunds: [], savingsMoves: [], creditPayments: [] };
+
+// ============================================================
+// AUTH
+// ============================================================
+const loginScreen = document.getElementById("login-screen");
+const appEl = document.getElementById("app");
+
+async function checkSession() {
+  const { data } = await supabase.auth.getSession();
+  if (data.session) {
+    showApp();
+  } else {
+    showLogin();
+  }
+}
+
+function showLogin() {
+  loginScreen.hidden = false;
+  appEl.hidden = true;
+}
+
+async function showApp() {
+  loginScreen.hidden = true;
+  appEl.hidden = false;
+  await loadAll();
+  renderAll();
+}
+
+document.getElementById("login-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const email = document.getElementById("login-email").value.trim();
+  const password = document.getElementById("login-password").value;
+  const errEl = document.getElementById("login-error");
+  errEl.hidden = true;
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) {
+    errEl.textContent = "No pudimos entrar: " + error.message;
+    errEl.hidden = false;
+    return;
+  }
+  await showApp();
+});
+
+document.getElementById("logout-btn").addEventListener("click", async () => {
+  await supabase.auth.signOut();
+  showLogin();
+});
+
+// ============================================================
+// NAVEGACIÓN
+// ============================================================
+function switchView(viewName) {
+  document.querySelectorAll(".nav-item").forEach((b) => b.classList.toggle("active", b.dataset.view === viewName));
+  document.querySelectorAll(".view").forEach((v) => (v.hidden = true));
+  const target = document.getElementById("view-" + viewName);
+  if (target) target.hidden = false;
+  // si el botón vive dentro de una carpeta (nav-group), la expandimos para que se vea activa
+  const activeBtn = document.querySelector(`.nav-item[data-view="${viewName}"]`);
+  const group = activeBtn && activeBtn.closest(".nav-group");
+  if (group) group.classList.remove("collapsed");
+}
+
+document.querySelectorAll(".nav-item").forEach((btn) => {
+  btn.addEventListener("click", () => switchView(btn.dataset.view));
+});
+
+document.querySelectorAll(".nav-group-header").forEach((header) => {
+  header.addEventListener("click", () => {
+    header.closest(".nav-group").classList.toggle("collapsed");
+  });
+});
+
+// ============================================================
+// CARGA DE DATOS
+// ============================================================
+let loadErrorShown = false;
+
+async function loadAll() {
+  const results = await Promise.all([
+    supabase.from("clients").select("*").order("name"),
+    supabase.from("income").select("*").order("date", { ascending: false }),
+    supabase.from("expenses").select("*").order("date", { ascending: false }),
+    supabase.from("tasks").select("*").order("due_date", { ascending: true, nullsFirst: false }),
+    supabase.from("savings_funds").select("*").order("name"),
+    supabase.from("savings_moves").select("*").order("date", { ascending: false }),
+    supabase.from("credit_payments").select("*").order("date", { ascending: false }),
+  ]);
+  const tableNames = ["clients", "income", "expenses", "tasks", "savings_funds", "savings_moves", "credit_payments"];
+  const fallidas = [];
+  results.forEach(({ error }, i) => {
+    if (error) fallidas.push(`${tableNames[i]}: ${error.message}`);
+  });
+  if (fallidas.length && !loadErrorShown) {
+    loadErrorShown = true;
+    alert(
+      "No se pudo cargar información de estas tablas:\n\n" +
+        fallidas.join("\n") +
+        "\n\nCasi siempre significa que falta correr el SQL de esa parte en Supabase (archivo schema.sql, SQL Editor). El resto de la app sigue funcionando."
+    );
+  }
+  const [{ data: clients }, { data: income }, { data: expenses }, { data: tasks }, { data: savingsFunds }, { data: savingsMoves }, { data: creditPayments }] = results;
+  state.clients = clients || [];
+  state.income = income || [];
+  state.expenses = expenses || [];
+  state.tasks = tasks || [];
+  state.savingsFunds = savingsFunds || [];
+  state.savingsMoves = savingsMoves || [];
+  state.creditPayments = creditPayments || [];
+}
+
+function clientName(id) {
+  const c = state.clients.find((c) => c.id === id);
+  return c ? c.name : "—";
+}
+
+// ---- Guardar con manejo de errores: si Supabase rechaza el insert/update
+// (por ejemplo porque falta correr el SQL de esa tabla), avisa en vez de
+// fallar en silencio. Regresa true si se guardó bien, false si no. ----
+async function saveRow(table, id, row) {
+  const { error } = id
+    ? await supabase.from(table).update(row).eq("id", id)
+    : await supabase.from(table).insert(row);
+  if (error) {
+    alert(
+      `No se pudo guardar (tabla "${table}"): ${error.message}\n\n` +
+        `Esto casi siempre pasa porque falta correr el SQL de esa parte en Supabase (SQL Editor). Revisa el archivo schema.sql.`
+    );
+    return false;
+  }
+  return true;
+}
+
+function renderAll() {
+  renderClientSelects();
+  renderClientesView();
+  renderTareasView();
+  renderTareasHistoricoView();
+  renderIngresosView();
+  renderGastosView();
+  renderCreditoView();
+  renderAhorroView();
+  renderHistoricoDetalle();
+  renderDashboard();
+}
+
+// ============================================================
+// CLIENTES
+// ============================================================
+function renderClientSelects() {
+  const opts = state.clients.map((c) => `<option value="${c.id}">${c.name}</option>`).join("");
+  document.getElementById("ingreso-cliente").innerHTML = opts;
+  document.getElementById("gasto-cliente").innerHTML =
+    `<option value="">— Ninguno —</option>` + opts;
+  document.getElementById("tarea-cliente").innerHTML =
+    `<option value="">— Ninguno —</option>` + opts;
+}
+
+function renderClientesView() {
+  const tbody = document.getElementById("tabla-clientes");
+  tbody.innerHTML = state.clients
+    .map(
+      (c) => `
+    <tr>
+      <td>${c.name}</td>
+      <td>${c.notes || ""}</td>
+      <td>${c.active ? "Sí" : "No"}</td>
+      <td>
+        <button class="btn-edit" data-id="${c.id}" data-kind="clients">Editar</button>
+        <button class="btn-delete" data-id="${c.id}" data-kind="clients">Eliminar</button>
+      </td>
+    </tr>`
+    )
+    .join("");
+}
+
+function resetClienteForm() {
+  document.getElementById("form-cliente").reset();
+  document.getElementById("cliente-id").value = "";
+  document.getElementById("cliente-submit-btn").textContent = "Agregar";
+  document.getElementById("cliente-cancel-btn").hidden = true;
+}
+
+document.getElementById("form-cliente").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = document.getElementById("cliente-id").value;
+  const name = document.getElementById("cliente-nombre").value.trim();
+  const notes = document.getElementById("cliente-notas").value.trim();
+  if (!name) return;
+  const ok = await saveRow("clients", id, { name, notes });
+  if (!ok) return;
+  resetClienteForm();
+  await loadAll();
+  renderAll();
+});
+
+document.getElementById("cliente-cancel-btn").addEventListener("click", resetClienteForm);
+
+// ============================================================
+// TAREAS
+// ============================================================
+function fechaTareaHTML(t) {
+  if (!t.due_date) return "—";
+  const vencida = t.status !== "Hecho" && t.due_date < todayISO();
+  return vencida ? `<span class="due-overdue">${t.due_date}</span>` : t.due_date;
+}
+
+function sortByDue(a, b) {
+  if (!a.due_date && !b.due_date) return 0;
+  if (!a.due_date) return 1;
+  if (!b.due_date) return -1;
+  return a.due_date.localeCompare(b.due_date);
+}
+
+function tareaCardHTML(t) {
+  const moveButtons = [];
+  if (t.status === "Pendiente") {
+    moveButtons.push(`<button class="kanban-move-btn" data-id="${t.id}" data-to="En curso">→ En curso</button>`);
+  } else if (t.status === "En curso") {
+    moveButtons.push(`<button class="kanban-move-btn" data-id="${t.id}" data-to="Pendiente">← Pendiente</button>`);
+    moveButtons.push(`<button class="kanban-move-btn" data-id="${t.id}" data-to="Hecho">→ Hecho</button>`);
+  } else if (t.status === "Hecho") {
+    moveButtons.push(`<button class="kanban-move-btn" data-id="${t.id}" data-to="En curso">← Reabrir</button>`);
+  }
+  return `
+    <div class="kanban-card">
+      <div class="kanban-card-title">${t.title}</div>
+      <div class="kanban-card-meta">
+        <span class="priority-tag ${t.priority}">${t.priority}</span>
+        <span>${t.category}</span>
+        ${t.client_id ? `<span>${clientName(t.client_id)}</span>` : ""}
+        ${t.due_date ? `<span>${fechaTareaHTML(t)}</span>` : ""}
       </div>
-
-      <div class="nav-group">
-        <button class="nav-group-header" data-group="finanzas">
-          <span>Finanzas</span><span class="nav-group-caret">▾</span>
-        </button>
-        <div class="nav-group-items">
-          <button class="nav-item nav-subitem" data-view="ingresos">Ingresos</button>
-          <button class="nav-item nav-subitem" data-view="gastos">Gastos</button>
-          <button class="nav-item nav-subitem" data-view="credito">Tarjeta de crédito</button>
-          <button class="nav-item nav-subitem" data-view="ahorro">Ahorro</button>
-          <button class="nav-item nav-subitem" data-view="historico">Histórico</button>
-        </div>
+      <div class="kanban-card-actions">
+        ${moveButtons.join("")}
+        <button class="btn-edit" data-id="${t.id}" data-kind="tasks">Editar</button>
+        <button class="btn-delete" data-id="${t.id}" data-kind="tasks">Eliminar</button>
       </div>
-    </nav>
-    <div class="sidebar-footer">
-      <button id="btn-privacy-toggle" class="btn-logout btn-privacy">🙈 Ocultar ingresos</button>
-      <button id="logout-btn" class="btn-logout">Cerrar sesión</button>
-    </div>
-  </aside>
+    </div>`;
+}
 
-  <main class="main">
+function renderTareasView() {
+  const porEstado = { Pendiente: [], "En curso": [], Hecho: [] };
+  state.tasks.forEach((t) => {
+    if (porEstado[t.status]) porEstado[t.status].push(t);
+  });
 
-    <!-- ---------- PANEL / DASHBOARD ---------- -->
-    <section id="view-dashboard" class="view">
-      <header class="view-header">
-        <h2>Panel financiero</h2>
-        <p class="muted">Se actualiza solo con lo que registres en Ingresos y Gastos.</p>
-      </header>
+  porEstado["Pendiente"].sort(sortByDue);
+  porEstado["En curso"].sort(sortByDue);
+  const hechoOrdenado = porEstado["Hecho"]
+    .slice()
+    .sort((a, b) => (b.due_date || "").localeCompare(a.due_date || ""))
+    .slice(0, 15);
 
-      <div class="kpi-row">
-        <div class="kpi-card">
-          <div class="kpi-label">Ingresos del periodo</div>
-          <div class="kpi-value ing-amount" id="kpi-ingresos">$0</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Gastos del periodo</div>
-          <div class="kpi-value ing-amount" id="kpi-gastos">$0</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Utilidad del periodo</div>
-          <div class="kpi-value ing-amount" id="kpi-utilidad">$0</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Clientes activos</div>
-          <div class="kpi-value" id="kpi-clientes">0</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Tareas pendientes</div>
-          <div class="kpi-value" id="kpi-tareas">0</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Ahorro total</div>
-          <div class="kpi-value ing-amount" id="kpi-ahorro">$0</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Saldo tarjeta (corte actual)</div>
-          <div class="kpi-value ing-amount" id="kpi-credito">$0</div>
-        </div>
-      </div>
+  document.getElementById("count-pendiente").textContent = porEstado["Pendiente"].length;
+  document.getElementById("count-encurso").textContent = porEstado["En curso"].length;
+  document.getElementById("count-hecho").textContent = porEstado["Hecho"].length;
 
-      <div id="alert-concentracion" class="alert-box" hidden></div>
+  document.getElementById("kanban-pendiente").innerHTML =
+    porEstado["Pendiente"].map(tareaCardHTML).join("") || `<p class="muted">Sin tareas aquí. 🎉</p>`;
+  document.getElementById("kanban-encurso").innerHTML =
+    porEstado["En curso"].map(tareaCardHTML).join("") || `<p class="muted">Sin tareas aquí.</p>`;
+  document.getElementById("kanban-hecho").innerHTML =
+    hechoOrdenado.map(tareaCardHTML).join("") || `<p class="muted">Sin tareas aquí todavía.</p>`;
+}
 
-      <div class="grid-2">
-        <div class="panel">
-          <h3>Concentración de ingresos por cliente</h3>
-          <canvas id="chart-concentracion"></canvas>
-        </div>
-        <div class="panel">
-          <h3>Rentabilidad por canal de origen</h3>
-          <canvas id="chart-canal" class="ing-amount"></canvas>
-        </div>
-      </div>
+function renderTareasHistoricoView() {
+  const hechas = state.tasks
+    .filter((t) => t.status === "Hecho")
+    .slice()
+    .sort((a, b) => (b.due_date || "").localeCompare(a.due_date || ""));
+  document.getElementById("tabla-tareas-historico").innerHTML =
+    hechas
+      .map(
+        (t) => `
+    <tr>
+      <td>${t.title}</td>
+      <td>${t.category}</td>
+      <td>${t.client_id ? clientName(t.client_id) : "—"}</td>
+      <td><span class="priority-tag ${t.priority}">${t.priority}</span></td>
+      <td>${t.due_date || "—"}</td>
+      <td>
+        <button class="btn-edit" data-id="${t.id}" data-kind="tasks">Editar</button>
+        <button class="btn-delete" data-id="${t.id}" data-kind="tasks">Eliminar</button>
+      </td>
+    </tr>`
+      )
+      .join("") || `<tr><td colspan="6" class="muted">Todavía no tienes tareas completadas.</td></tr>`;
+}
 
-      <div class="grid-2">
-        <div class="panel">
-          <h3>Proyección recurrente (mensual)</h3>
-          <div id="proyeccion-recurrente" class="stat-list"></div>
-        </div>
-        <div class="panel">
-          <h3>Utilidad por cliente</h3>
-          <div id="utilidad-cliente" class="stat-list"></div>
-        </div>
-      </div>
+document.addEventListener("click", async (e) => {
+  if (!e.target.matches(".kanban-move-btn")) return;
+  const { id, to } = e.target.dataset;
+  await supabase.from("tasks").update({ status: to }).eq("id", id);
+  await loadAll();
+  renderAll();
+});
 
-      <div class="panel">
-        <h3>Próximos pendientes</h3>
-        <div id="proximos-pendientes" class="stat-list"></div>
-      </div>
-    </section>
+function resetTareaForm() {
+  document.getElementById("form-tarea").reset();
+  document.getElementById("tarea-id").value = "";
+  document.getElementById("tarea-submit-btn").textContent = "Agregar tarea";
+  document.getElementById("tarea-cancel-btn").hidden = true;
+}
 
-    <!-- ---------- CLIENTES ---------- -->
-    <section id="view-clientes" class="view" hidden>
-      <header class="view-header">
-        <h2>Clientes</h2>
-        <p class="muted">Da de alta a un cliente aquí antes de registrarle ingresos o gastos.</p>
-      </header>
+document.getElementById("form-tarea").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = document.getElementById("tarea-id").value;
+  const row = {
+    title: document.getElementById("tarea-titulo").value.trim(),
+    category: document.getElementById("tarea-categoria").value,
+    client_id: document.getElementById("tarea-cliente").value || null,
+    status: document.getElementById("tarea-estado").value,
+    priority: document.getElementById("tarea-prioridad").value,
+    due_date: document.getElementById("tarea-fecha").value || null,
+  };
+  if (!row.title) return;
+  const ok = await saveRow("tasks", id, row);
+  if (!ok) return;
+  resetTareaForm();
+  await loadAll();
+  renderAll();
+});
 
-      <div class="panel">
-        <h3>Nuevo cliente</h3>
-        <form id="form-cliente" class="form-inline">
-          <input type="hidden" id="cliente-id">
-          <input type="text" id="cliente-nombre" placeholder="Nombre del cliente" required>
-          <input type="text" id="cliente-notas" placeholder="Notas (opcional)">
-          <button type="submit" id="cliente-submit-btn" class="btn btn-primary">Agregar</button>
-          <button type="button" id="cliente-cancel-btn" class="btn-cancel-edit" hidden>Cancelar edición</button>
-        </form>
-      </div>
+document.getElementById("tarea-cancel-btn").addEventListener("click", resetTareaForm);
 
-      <div class="panel">
-        <h3>Tus clientes</h3>
-        <table class="data-table">
-          <thead><tr><th>Nombre</th><th>Notas</th><th>Activo</th><th></th></tr></thead>
-          <tbody id="tabla-clientes"></tbody>
-        </table>
-      </div>
-    </section>
+// ============================================================
+// INGRESOS
+// ============================================================
+document.getElementById("ingreso-fecha").value = todayISO();
 
-    <!-- ---------- TAREAS ---------- -->
-    <section id="view-tareas" class="view" hidden>
-      <header class="view-header">
-        <h2>Tareas y pendientes</h2>
-        <p class="muted">Trabajo y personal, todo en un solo lugar.</p>
-      </header>
+function renderIngresosView() {
+  const tbody = document.getElementById("tabla-ingresos");
+  const delMes = state.income.filter((i) => i.date && i.date.slice(0, 7) === currentPeriodKey());
+  tbody.innerHTML =
+    delMes
+      .map(
+        (i) => `
+    <tr>
+      <td>${i.date}</td>
+      <td>${clientName(i.client_id)}</td>
+      <td>${i.service}</td>
+      <td>${i.type}</td>
+      <td class="ing-amount">${money(i.amount)}</td>
+      <td class="ing-amount">${money(i.iva)}</td>
+      <td>${i.payment_method || ""}</td>
+      <td>${i.is_recurring ? "Sí" : "No"}</td>
+      <td><span class="invoiced-tag ${i.invoiced ? "si" : "no"}">${i.invoiced ? `Sí${i.invoice_folio ? " · " + i.invoice_folio : ""}` : "No"}</span></td>
+      <td>
+        <button class="btn-edit" data-id="${i.id}" data-kind="income">Editar</button>
+        <button class="btn-delete" data-id="${i.id}" data-kind="income">Eliminar</button>
+      </td>
+    </tr>`
+      )
+      .join("") || `<tr><td colspan="10" class="muted">Aún no registras ingresos este mes.</td></tr>`;
+}
 
-      <div class="panel">
-        <form id="form-tarea" class="form-grid">
-          <input type="hidden" id="tarea-id">
-          <div><label>Título</label><input type="text" id="tarea-titulo" required></div>
-          <div><label>Categoría</label>
-            <select id="tarea-categoria">
-              <option>Trabajo</option><option>Personal</option>
-            </select>
-          </div>
-          <div><label>Cliente (opcional)</label><select id="tarea-cliente"><option value="">— Ninguno —</option></select></div>
-          <div><label>Estado</label>
-            <select id="tarea-estado">
-              <option>Pendiente</option><option>En curso</option><option>Hecho</option>
-            </select>
-          </div>
-          <div><label>Prioridad</label>
-            <select id="tarea-prioridad">
-              <option>Alta</option><option selected>Media</option><option>Baja</option>
-            </select>
-          </div>
-          <div><label>Fecha límite (opcional)</label><input type="date" id="tarea-fecha"></div>
-          <div class="form-actions">
-            <button type="submit" id="tarea-submit-btn" class="btn btn-primary">Agregar tarea</button>
-            <button type="button" id="tarea-cancel-btn" class="btn-cancel-edit" hidden>Cancelar edición</button>
-          </div>
-        </form>
-      </div>
+function resetIngresoForm() {
+  document.getElementById("form-ingreso").reset();
+  document.getElementById("ingreso-id").value = "";
+  document.getElementById("ingreso-fecha").value = todayISO();
+  document.getElementById("ingreso-submit-btn").textContent = "Registrar ingreso";
+  document.getElementById("ingreso-cancel-btn").hidden = true;
+}
 
-      <div class="panel">
-        <h3>Tablero de tareas</h3>
-        <div class="kanban-board">
-          <div class="kanban-column">
-            <div class="kanban-column-header"><span>Pendiente</span><span class="kanban-count" id="count-pendiente">0</span></div>
-            <div id="kanban-pendiente"></div>
-          </div>
-          <div class="kanban-column">
-            <div class="kanban-column-header"><span>En curso</span><span class="kanban-count" id="count-encurso">0</span></div>
-            <div id="kanban-encurso"></div>
-          </div>
-          <div class="kanban-column">
-            <div class="kanban-column-header"><span>Hecho</span><span class="kanban-count" id="count-hecho">0</span></div>
-            <div id="kanban-hecho"></div>
-          </div>
-        </div>
-        <p class="muted" style="margin-top: 12px;">Esta columna solo muestra las últimas 15 tareas hechas. El historial completo está en Tareas → Histórico.</p>
-      </div>
-    </section>
+document.getElementById("form-ingreso").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = document.getElementById("ingreso-id").value;
+  const row = {
+    client_id: document.getElementById("ingreso-cliente").value,
+    service: document.getElementById("ingreso-servicio").value.trim(),
+    type: document.getElementById("ingreso-tipo").value,
+    amount: parseFloat(document.getElementById("ingreso-monto").value) || 0,
+    iva: parseFloat(document.getElementById("ingreso-iva").value) || 0,
+    payment_method: document.getElementById("ingreso-metodo").value,
+    is_recurring: document.getElementById("ingreso-recurrente").checked,
+    date: document.getElementById("ingreso-fecha").value,
+    invoiced: document.getElementById("ingreso-facturado").checked,
+    invoice_folio: document.getElementById("ingreso-folio").value.trim() || null,
+    invoice_date: document.getElementById("ingreso-fecha-factura").value || null,
+  };
+  const ok = await saveRow("income", id, row);
+  if (!ok) return;
+  resetIngresoForm();
+  await loadAll();
+  renderAll();
+});
 
-    <!-- ---------- TAREAS: HISTÓRICO ---------- -->
-    <section id="view-tareas-historico" class="view" hidden>
-      <header class="view-header">
-        <h2>Histórico de tareas</h2>
-        <p class="muted">Todas las tareas marcadas como "Hecho", completo — el tablero solo muestra las últimas 15.</p>
-      </header>
+document.getElementById("ingreso-cancel-btn").addEventListener("click", resetIngresoForm);
 
-      <div class="panel">
-        <table class="data-table">
-          <thead><tr><th>Título</th><th>Categoría</th><th>Cliente</th><th>Prioridad</th><th>Fecha límite</th><th></th></tr></thead>
-          <tbody id="tabla-tareas-historico"></tbody>
-        </table>
-      </div>
-    </section>
+// ---- Conversor EUR -> MXN (solo ayuda a llenar el Monto, no se guarda aparte) ----
+function actualizarMontoDesdeEuros() {
+  const eur = parseFloat(document.getElementById("ingreso-eur-monto").value);
+  const tc = parseFloat(document.getElementById("ingreso-eur-tc").value);
+  if (eur > 0 && tc > 0) {
+    document.getElementById("ingreso-monto").value = (eur * tc).toFixed(2);
+  }
+}
+document.getElementById("ingreso-eur-monto").addEventListener("input", actualizarMontoDesdeEuros);
+document.getElementById("ingreso-eur-tc").addEventListener("input", actualizarMontoDesdeEuros);
 
-    <!-- ---------- INGRESOS ---------- -->
-    <section id="view-ingresos" class="view" hidden>
-      <header class="view-header">
-        <h2>Registrar ingreso</h2>
-        <p class="muted">El historial de abajo muestra solo el mes en curso. Los meses anteriores se guardan en Histórico.</p>
-      </header>
+document.getElementById("btn-tipo-cambio-hoy").addEventListener("click", async () => {
+  const statusEl = document.getElementById("tipo-cambio-status");
+  statusEl.textContent = "Consultando tipo de cambio...";
+  try {
+    const res = await fetch("https://api.frankfurter.dev/v1/latest?from=EUR&to=MXN");
+    const data = await res.json();
+    const rate = data && data.rates && data.rates.MXN;
+    if (rate) {
+      document.getElementById("ingreso-eur-tc").value = rate.toFixed(4);
+      statusEl.textContent = `Tipo de cambio de hoy (${data.date}): 1 € = ${rate.toFixed(2)} MXN`;
+      actualizarMontoDesdeEuros();
+    } else {
+      statusEl.textContent = "No se pudo obtener el tipo de cambio automático, ponlo manual.";
+    }
+  } catch (err) {
+    statusEl.textContent = "No se pudo obtener el tipo de cambio automático, ponlo manual.";
+  }
+});
 
-      <div class="panel">
-        <form id="form-ingreso" class="form-grid">
-          <input type="hidden" id="ingreso-id">
-          <div><label>Cliente</label><select id="ingreso-cliente" required></select></div>
-          <div><label>Servicio</label><input type="text" id="ingreso-servicio" required></div>
-          <div><label>Canal / Tipo</label>
-            <select id="ingreso-tipo">
-              <option>Freelance</option><option>Retainer</option><option>Proyecto</option>
-              <option>Salario</option><option>Comisión</option><option>Video</option><option>Otro</option>
-            </select>
-          </div>
-          <div><label>Monto (MXN)</label><input type="number" step="0.01" id="ingreso-monto" required></div>
-          <div><label>IVA</label><input type="number" step="0.01" id="ingreso-iva" value="0"></div>
-          <div><label>Método de pago</label>
-            <select id="ingreso-metodo">
-              <option>Transferencia</option><option>Efectivo</option><option>Tarjeta</option><option>Otro</option>
-            </select>
-          </div>
-          <div><label>Fecha</label><input type="date" id="ingreso-fecha" required></div>
-          <div class="checkbox-row"><label><input type="checkbox" id="ingreso-recurrente"> Es recurrente</label></div>
-          <div class="checkbox-row"><label><input type="checkbox" id="ingreso-facturado"> Ya emití factura</label></div>
-          <div><label>Folio de factura (opcional)</label><input type="text" id="ingreso-folio"></div>
-          <div><label>Fecha de factura (opcional)</label><input type="date" id="ingreso-fecha-factura"></div>
-          <div class="form-actions">
-            <details class="eur-helper">
-              <summary>¿Cobraste en euros? Conviértelo a pesos aquí</summary>
-              <div class="eur-helper-row">
-                <div><label>Monto en euros</label><input type="number" step="0.01" id="ingreso-eur-monto" placeholder="Ej. 85"></div>
-                <div><label>Tipo de cambio (1 € = ? MXN)</label><input type="number" step="0.0001" id="ingreso-eur-tc" placeholder="Ej. 19.66"></div>
-              </div>
-              <div class="eur-helper-actions">
-                <button type="button" id="btn-tipo-cambio-hoy" class="btn-edit">Usar tipo de cambio de hoy</button>
-                <span id="tipo-cambio-status" class="muted"></span>
-              </div>
-              <p class="muted">Al llenar estos dos campos, el Monto de arriba se calcula solo.</p>
-            </details>
-          </div>
-          <div class="form-actions">
-            <button type="submit" id="ingreso-submit-btn" class="btn btn-primary">Registrar ingreso</button>
-            <button type="button" id="ingreso-cancel-btn" class="btn-cancel-edit" hidden>Cancelar edición</button>
-          </div>
-        </form>
-      </div>
+// ============================================================
+// GASTOS
+// ============================================================
+document.getElementById("gasto-fecha").value = todayISO();
 
-      <div class="panel">
-        <h3>Historial de ingresos (este mes)</h3>
-        <table class="data-table">
-          <thead><tr><th>Fecha</th><th>Cliente</th><th>Servicio</th><th>Canal</th><th>Monto</th><th>IVA</th><th>Método</th><th>Recurrente</th><th>Facturado</th><th></th></tr></thead>
-          <tbody id="tabla-ingresos"></tbody>
-        </table>
-      </div>
-    </section>
+function renderGastosView() {
+  const tbody = document.getElementById("tabla-gastos");
+  const delMes = state.expenses.filter((g) => g.date && g.date.slice(0, 7) === currentPeriodKey());
+  tbody.innerHTML = delMes
+    .map(
+      (g) => `
+    <tr>
+      <td>${g.date}</td>
+      <td>${g.description}</td>
+      <td>${g.category}</td>
+      <td>${g.client_id ? clientName(g.client_id) : "—"}</td>
+      <td class="ing-amount">${money(g.amount)}</td>
+      <td>${g.recurrence}</td>
+      <td>${g.payment_method || ""}</td>
+      <td><span class="invoiced-tag ${g.invoiced ? "si" : "no"}">${g.invoiced ? `Sí${g.invoice_folio ? " · " + g.invoice_folio : ""}` : "No"}</span></td>
+      <td>
+        <button class="btn-edit" data-id="${g.id}" data-kind="expenses">Editar</button>
+        <button class="btn-delete" data-id="${g.id}" data-kind="expenses">Eliminar</button>
+      </td>
+    </tr>`
+    )
+    .join("") || `<tr><td colspan="9" class="muted">Aún no registras gastos este mes.</td></tr>`;
+}
 
-    <!-- ---------- GASTOS ---------- -->
-    <section id="view-gastos" class="view" hidden>
-      <header class="view-header">
-        <h2>Registrar gasto</h2>
-        <p class="muted">El historial de abajo muestra solo el mes en curso. Los meses anteriores se guardan en Histórico.</p>
-      </header>
+function resetGastoForm() {
+  document.getElementById("form-gasto").reset();
+  document.getElementById("gasto-id").value = "";
+  document.getElementById("gasto-fecha").value = todayISO();
+  document.getElementById("gasto-submit-btn").textContent = "Registrar gasto";
+  document.getElementById("gasto-cancel-btn").hidden = true;
+}
 
-      <div class="panel">
-        <form id="form-gasto" class="form-grid">
-          <input type="hidden" id="gasto-id">
-          <div><label>Descripción</label><input type="text" id="gasto-descripcion" required></div>
-          <div><label>Categoría</label>
-            <select id="gasto-categoria">
-              <option>Vivienda</option><option>Servicios</option><option>Suscripciones</option>
-              <option>Transporte</option><option>Salud</option><option>Seguros</option>
-              <option>Profesional</option><option>Compras</option><option>Deudas</option>
-              <option>Ahorro</option><option>Otro</option>
-            </select>
-          </div>
-          <div><label>Cliente relacionado (opcional)</label><select id="gasto-cliente"><option value="">— Ninguno —</option></select></div>
-          <div><label>Detalle</label><input type="text" id="gasto-detalle"></div>
-          <div><label>Monto</label><input type="number" step="0.01" id="gasto-monto" required></div>
-          <div><label>Recurrencia</label>
-            <select id="gasto-recurrencia">
-              <option>Único</option><option>Mensual</option><option>Semanal</option><option>Anual</option>
-            </select>
-          </div>
-          <div><label>Método de pago</label>
-            <select id="gasto-metodo">
-              <option>Transferencia</option><option>Efectivo</option><option>Tarjeta de débito</option><option>Tarjeta de crédito</option><option>Otro</option>
-            </select>
-          </div>
-          <div><label>Fecha</label><input type="date" id="gasto-fecha" required></div>
-          <div class="checkbox-row"><label><input type="checkbox" id="gasto-facturado"> Tengo factura de este gasto</label></div>
-          <div><label>Folio de factura (opcional)</label><input type="text" id="gasto-folio"></div>
-          <div><label>Fecha de factura (opcional)</label><input type="date" id="gasto-fecha-factura"></div>
-          <div class="form-actions">
-            <button type="submit" id="gasto-submit-btn" class="btn btn-primary">Registrar gasto</button>
-            <button type="button" id="gasto-cancel-btn" class="btn-cancel-edit" hidden>Cancelar edición</button>
-          </div>
-        </form>
-      </div>
+document.getElementById("form-gasto").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = document.getElementById("gasto-id").value;
+  const clientId = document.getElementById("gasto-cliente").value;
+  const row = {
+    description: document.getElementById("gasto-descripcion").value.trim(),
+    category: document.getElementById("gasto-categoria").value,
+    client_id: clientId || null,
+    detail: document.getElementById("gasto-detalle").value.trim(),
+    amount: parseFloat(document.getElementById("gasto-monto").value) || 0,
+    recurrence: document.getElementById("gasto-recurrencia").value,
+    payment_method: document.getElementById("gasto-metodo").value,
+    date: document.getElementById("gasto-fecha").value,
+    invoiced: document.getElementById("gasto-facturado").checked,
+    invoice_folio: document.getElementById("gasto-folio").value.trim() || null,
+    invoice_date: document.getElementById("gasto-fecha-factura").value || null,
+  };
+  const ok = await saveRow("expenses", id, row);
+  if (!ok) return;
+  resetGastoForm();
+  await loadAll();
+  renderAll();
+});
 
-      <div class="panel">
-        <h3>Historial de gastos (este mes)</h3>
-        <table class="data-table">
-          <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Cliente</th><th>Monto</th><th>Recurrencia</th><th>Método</th><th>Facturado</th><th></th></tr></thead>
-          <tbody id="tabla-gastos"></tbody>
-        </table>
-      </div>
-    </section>
+document.getElementById("gasto-cancel-btn").addEventListener("click", resetGastoForm);
 
-    <!-- ---------- TARJETA DE CRÉDITO ---------- -->
-    <section id="view-credito" class="view" hidden>
-      <header class="view-header">
-        <h2>Tarjeta de crédito</h2>
-        <p class="muted">Agrupa tus gastos con método "Tarjeta de crédito" por corte (del 27 al 26 de cada mes) y lleva el control de tus dos pagos quincenales.</p>
-      </header>
+// ============================================================
+// TARJETA DE CRÉDITO (cortes + pagos quincenales)
+// ============================================================
+document.getElementById("pago-credito-fecha").value = todayISO();
 
-      <div class="panel">
-        <h3 id="credito-corte-label">Corte actual</h3>
-        <div class="kpi-row" style="grid-template-columns: repeat(4, 1fr);">
-          <div class="kpi-card">
-            <div class="kpi-label">Total del corte</div>
-            <div class="kpi-value ing-amount" id="credito-corte-total">$0</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-label">Pagado</div>
-            <div class="kpi-value ing-amount" id="credito-corte-pagado">$0</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-label">Saldo pendiente</div>
-            <div class="kpi-value ing-amount" id="credito-corte-saldo">$0</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-label">Sugerido por quincena (50%)</div>
-            <div class="kpi-value ing-amount" id="credito-corte-sugerido">$0</div>
-          </div>
-        </div>
-      </div>
+function gastosCreditoDelCorte(periodKey) {
+  return state.expenses.filter(
+    (g) => g.payment_method === "Tarjeta de crédito" && cortePeriodKey(g.date) === periodKey
+  );
+}
 
-      <div class="panel">
-        <h3>Gastos a crédito de este corte</h3>
-        <table class="data-table">
-          <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th></tr></thead>
-          <tbody id="tabla-credito-gastos"></tbody>
-        </table>
-      </div>
+function totalCorte(periodKey) {
+  return gastosCreditoDelCorte(periodKey).reduce((s, g) => s + Number(g.amount || 0), 0);
+}
 
-      <div class="panel">
-        <h3>Registrar pago quincenal</h3>
-        <form id="form-pago-credito" class="form-grid">
-          <input type="hidden" id="pago-credito-id">
-          <div><label>Corte</label><select id="pago-credito-periodo" required></select></div>
-          <div>
-            <label>Monto</label>
-            <input type="number" step="0.01" id="pago-credito-monto" required>
-          </div>
-          <div><label>Fecha</label><input type="date" id="pago-credito-fecha" required></div>
-          <div><label>Nota (opcional)</label><input type="text" id="pago-credito-nota"></div>
-          <div class="form-actions">
-            <button type="button" id="btn-sugerido-credito" class="btn-edit">Usar 50% sugerido de este corte</button>
-          </div>
-          <div class="form-actions">
-            <button type="submit" id="pago-credito-submit-btn" class="btn btn-primary">Registrar pago</button>
-            <button type="button" id="pago-credito-cancel-btn" class="btn-cancel-edit" hidden>Cancelar edición</button>
-          </div>
-        </form>
-      </div>
+function pagadoCorte(periodKey) {
+  return state.creditPayments
+    .filter((p) => p.period_key === periodKey)
+    .reduce((s, p) => s + Number(p.amount || 0), 0);
+}
 
-      <div class="panel">
-        <h3>Pagos registrados</h3>
-        <table class="data-table">
-          <thead><tr><th>Fecha</th><th>Corte</th><th>Monto</th><th>Nota</th><th></th></tr></thead>
-          <tbody id="tabla-pagos-credito"></tbody>
-        </table>
-      </div>
+function allCortePeriods() {
+  const keys = new Set([currentCorteKey()]);
+  state.expenses.forEach((g) => {
+    if (g.payment_method === "Tarjeta de crédito" && g.date) keys.add(cortePeriodKey(g.date));
+  });
+  state.creditPayments.forEach((p) => keys.add(p.period_key));
+  return Array.from(keys).sort((a, b) => b.localeCompare(a));
+}
 
-      <div class="panel">
-        <h3>Historial de cortes</h3>
-        <table class="data-table">
-          <thead><tr><th>Corte</th><th>Total gastado</th><th>Pagado</th><th>Saldo</th><th>Estado</th></tr></thead>
-          <tbody id="tabla-historico-cortes"></tbody>
-        </table>
-      </div>
-    </section>
+function renderCreditoView() {
+  const periodos = allCortePeriods();
+  const actual = currentCorteKey();
 
-    <!-- ---------- AHORRO ---------- -->
-    <section id="view-ahorro" class="view" hidden>
-      <header class="view-header">
-        <h2>Ahorro</h2>
-        <p class="muted">Crea uno o varios fondos y ve registrando depósitos y retiros.</p>
-      </header>
+  const selPeriodo = document.getElementById("pago-credito-periodo");
+  const prevSel = selPeriodo.value;
+  selPeriodo.innerHTML = periodos.map((k) => `<option value="${k}">${corteRangeLabel(k)}</option>`).join("");
+  selPeriodo.value = prevSel && periodos.includes(prevSel) ? prevSel : actual;
 
-      <div class="panel">
-        <h3>Nuevo fondo</h3>
-        <form id="form-fondo" class="form-grid">
-          <input type="hidden" id="fondo-id">
-          <div><label>Nombre</label><input type="text" id="fondo-nombre" placeholder="Ej. Fondo de emergencia" required></div>
-          <div><label>Meta (opcional)</label><input type="number" step="0.01" id="fondo-meta" placeholder="Ej. 50000"></div>
-          <div class="form-actions">
-            <button type="submit" id="fondo-submit-btn" class="btn btn-primary">Agregar fondo</button>
-            <button type="button" id="fondo-cancel-btn" class="btn-cancel-edit" hidden>Cancelar edición</button>
-          </div>
-        </form>
-      </div>
+  const totalActual = totalCorte(actual);
+  const pagadoActual = pagadoCorte(actual);
+  const saldoActual = totalActual - pagadoActual;
+  document.getElementById("credito-corte-label").textContent = corteRangeLabel(actual);
+  document.getElementById("credito-corte-total").textContent = money(totalActual);
+  document.getElementById("credito-corte-pagado").textContent = money(pagadoActual);
+  document.getElementById("credito-corte-saldo").textContent = money(saldoActual);
+  document.getElementById("credito-corte-sugerido").textContent = money(totalActual / 2);
 
-      <div class="panel">
-        <h3>Tus fondos</h3>
-        <table class="data-table">
-          <thead><tr><th>Nombre</th><th>Meta</th><th>Acumulado</th><th>Avance</th><th></th></tr></thead>
-          <tbody id="tabla-fondos"></tbody>
-        </table>
-      </div>
+  const gastosCorte = gastosCreditoDelCorte(actual)
+    .slice()
+    .sort((a, b) => b.date.localeCompare(a.date));
+  document.getElementById("tabla-credito-gastos").innerHTML =
+    gastosCorte
+      .map(
+        (g) => `
+    <tr>
+      <td>${g.date}</td>
+      <td class="ing-amount">${g.description}</td>
+      <td>${g.category}</td>
+      <td class="ing-amount">${money(g.amount)}</td>
+    </tr>`
+      )
+      .join("") || `<tr><td colspan="4" class="muted">Todavía no registras gastos a crédito en este corte.</td></tr>`;
 
-      <div class="panel">
-        <h3>Registrar movimiento</h3>
-        <form id="form-movimiento" class="form-grid">
-          <input type="hidden" id="movimiento-id">
-          <div><label>Fondo</label><select id="movimiento-fondo" required></select></div>
-          <div><label>Tipo</label>
-            <select id="movimiento-tipo">
-              <option>Depósito</option><option>Retiro</option>
-            </select>
-          </div>
-          <div><label>Monto</label><input type="number" step="0.01" id="movimiento-monto" required></div>
-          <div><label>Fecha</label><input type="date" id="movimiento-fecha" required></div>
-          <div><label>Nota (opcional)</label><input type="text" id="movimiento-nota"></div>
-          <div class="form-actions">
-            <button type="submit" id="movimiento-submit-btn" class="btn btn-primary">Registrar movimiento</button>
-            <button type="button" id="movimiento-cancel-btn" class="btn-cancel-edit" hidden>Cancelar edición</button>
-          </div>
-        </form>
-      </div>
+  document.getElementById("tabla-pagos-credito").innerHTML =
+    state.creditPayments
+      .slice()
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .map(
+        (p) => `
+    <tr>
+      <td>${p.date}</td>
+      <td>${corteRangeLabel(p.period_key)}</td>
+      <td class="ing-amount">${money(p.amount)}</td>
+      <td>${p.note || ""}</td>
+      <td>
+        <button class="btn-edit" data-id="${p.id}" data-kind="credit_payments">Editar</button>
+        <button class="btn-delete" data-id="${p.id}" data-kind="credit_payments">Eliminar</button>
+      </td>
+    </tr>`
+      )
+      .join("") || `<tr><td colspan="5" class="muted">Todavía no registras pagos.</td></tr>`;
 
-      <div class="panel">
-        <h3>Movimientos</h3>
-        <table class="data-table">
-          <thead><tr><th>Fecha</th><th>Fondo</th><th>Tipo</th><th>Monto</th><th>Nota</th><th></th></tr></thead>
-          <tbody id="tabla-movimientos"></tbody>
-        </table>
-      </div>
-    </section>
+  document.getElementById("tabla-historico-cortes").innerHTML =
+    periodos
+      .map((k) => {
+        const total = totalCorte(k);
+        const pagado = pagadoCorte(k);
+        const saldo = total - pagado;
+        const estado = saldo <= 0 ? "Liquidado" : k === actual ? "En curso" : "Pendiente";
+        return `
+    <tr>
+      <td>${corteRangeLabel(k)}</td>
+      <td class="ing-amount">${money(total)}</td>
+      <td class="ing-amount">${money(pagado)}</td>
+      <td class="${saldo > 0 ? "due-overdue" : ""} ing-amount">${money(saldo)}</td>
+      <td>${estado}</td>
+    </tr>`;
+      })
+      .join("") || `<tr><td colspan="5" class="muted">Sin cortes todavía.</td></tr>`;
+}
 
-    <!-- ---------- HISTÓRICO ---------- -->
-    <section id="view-historico" class="view" hidden>
-      <header class="view-header">
-        <h2>Histórico</h2>
-        <p class="muted">Registro permanente de meses anteriores. Nada se borra al cambiar de mes — el corte es solo visual en Ingresos y Gastos. También puedes editar o eliminar estos registros aquí.</p>
-      </header>
+function resetPagoCreditoForm() {
+  document.getElementById("form-pago-credito").reset();
+  document.getElementById("pago-credito-id").value = "";
+  document.getElementById("pago-credito-fecha").value = todayISO();
+  document.getElementById("pago-credito-submit-btn").textContent = "Registrar pago";
+  document.getElementById("pago-credito-cancel-btn").hidden = true;
+}
 
-      <div class="panel">
-        <h3>Resumen mensual (ingresos, gastos y utilidad)</h3>
-        <table class="data-table">
-          <thead><tr><th>Mes</th><th>Ingresos</th><th>Gastos</th><th>Utilidad</th></tr></thead>
-          <tbody id="tabla-historico-mensual"></tbody>
-        </table>
-      </div>
+document.getElementById("form-pago-credito").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = document.getElementById("pago-credito-id").value;
+  const row = {
+    period_key: document.getElementById("pago-credito-periodo").value,
+    amount: parseFloat(document.getElementById("pago-credito-monto").value) || 0,
+    date: document.getElementById("pago-credito-fecha").value,
+    note: document.getElementById("pago-credito-nota").value.trim(),
+  };
+  if (!row.period_key) return;
+  const ok = await saveRow("credit_payments", id, row);
+  if (!ok) return;
+  resetPagoCreditoForm();
+  await loadAll();
+  renderAll();
+});
 
-      <div class="panel">
-        <h3>Ingresos de meses anteriores</h3>
-        <table class="data-table">
-          <thead><tr><th>Fecha</th><th>Cliente</th><th>Servicio</th><th>Canal</th><th>Monto</th><th>IVA</th><th></th></tr></thead>
-          <tbody id="tabla-historico-ingresos"></tbody>
-        </table>
-      </div>
+document.getElementById("pago-credito-cancel-btn").addEventListener("click", resetPagoCreditoForm);
 
-      <div class="panel">
-        <h3>Gastos de meses anteriores</h3>
-        <table class="data-table">
-          <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Cliente</th><th>Monto</th><th>Recurrencia</th><th>Método</th><th></th></tr></thead>
-          <tbody id="tabla-historico-gastos"></tbody>
-        </table>
-      </div>
-    </section>
+document.getElementById("btn-sugerido-credito").addEventListener("click", () => {
+  const periodo = document.getElementById("pago-credito-periodo").value;
+  const sugerido = totalCorte(periodo) / 2;
+  document.getElementById("pago-credito-monto").value = sugerido.toFixed(2);
+});
 
-  </main>
-</div>
+// ============================================================
+// AHORRO (fondos + movimientos)
+// ============================================================
+document.getElementById("movimiento-fecha").value = todayISO();
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-<script type="module" src="app.js"></script>
-</body>
-</html>
+function fondoAcumulado(fondoId) {
+  return state.savingsMoves
+    .filter((m) => m.fund_id === fondoId)
+    .reduce((s, m) => s + (m.type === "Retiro" ? -Number(m.amount || 0) : Number(m.amount || 0)), 0);
+}
+
+function fondoName(id) {
+  const f = state.savingsFunds.find((x) => x.id === id);
+  return f ? f.name : "—";
+}
+
+function renderFondoSelect() {
+  document.getElementById("movimiento-fondo").innerHTML = state.savingsFunds
+    .map((f) => `<option value="${f.id}">${f.name}</option>`)
+    .join("");
+}
+
+function renderAhorroView() {
+  renderFondoSelect();
+
+  const tbodyFondos = document.getElementById("tabla-fondos");
+  tbodyFondos.innerHTML =
+    state.savingsFunds
+      .map((f) => {
+        const acumulado = fondoAcumulado(f.id);
+        let avance = "—";
+        if (f.goal_amount > 0) {
+          const pct = Math.max(0, Math.min(100, Math.round((acumulado / f.goal_amount) * 100)));
+          avance = `<div class="progress-bar"><div class="progress-bar-fill" style="width:${pct}%"></div></div><span class="muted">${pct}%</span>`;
+        }
+        return `
+    <tr>
+      <td>${f.name}</td>
+      <td class="ing-amount">${f.goal_amount ? money(f.goal_amount) : "—"}</td>
+      <td class="ing-amount">${money(acumulado)}</td>
+      <td>${avance}</td>
+      <td>
+        <button class="btn-edit" data-id="${f.id}" data-kind="savings_funds">Editar</button>
+        <button class="btn-delete" data-id="${f.id}" data-kind="savings_funds">Eliminar</button>
+      </td>
+    </tr>`;
+      })
+      .join("") || `<tr><td colspan="5" class="muted">Todavía no tienes fondos de ahorro.</td></tr>`;
+
+  const tbodyMovs = document.getElementById("tabla-movimientos");
+  tbodyMovs.innerHTML =
+    state.savingsMoves
+      .map(
+        (m) => `
+    <tr>
+      <td>${m.date}</td>
+      <td>${fondoName(m.fund_id)}</td>
+      <td>${m.type}</td>
+      <td class="ing-amount">${money(m.amount)}</td>
+      <td>${m.note || ""}</td>
+      <td>
+        <button class="btn-edit" data-id="${m.id}" data-kind="savings_moves">Editar</button>
+        <button class="btn-delete" data-id="${m.id}" data-kind="savings_moves">Eliminar</button>
+      </td>
+    </tr>`
+      )
+      .join("") || `<tr><td colspan="6" class="muted">Todavía no registras movimientos.</td></tr>`;
+}
+
+function resetFondoForm() {
+  document.getElementById("form-fondo").reset();
+  document.getElementById("fondo-id").value = "";
+  document.getElementById("fondo-submit-btn").textContent = "Agregar fondo";
+  document.getElementById("fondo-cancel-btn").hidden = true;
+}
+
+document.getElementById("form-fondo").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = document.getElementById("fondo-id").value;
+  const row = {
+    name: document.getElementById("fondo-nombre").value.trim(),
+    goal_amount: parseFloat(document.getElementById("fondo-meta").value) || null,
+  };
+  if (!row.name) return;
+  const ok = await saveRow("savings_funds", id, row);
+  if (!ok) return;
+  resetFondoForm();
+  await loadAll();
+  renderAll();
+});
+
+document.getElementById("fondo-cancel-btn").addEventListener("click", resetFondoForm);
+
+function resetMovimientoForm() {
+  document.getElementById("form-movimiento").reset();
+  document.getElementById("movimiento-id").value = "";
+  document.getElementById("movimiento-fecha").value = todayISO();
+  document.getElementById("movimiento-submit-btn").textContent = "Registrar movimiento";
+  document.getElementById("movimiento-cancel-btn").hidden = true;
+}
+
+document.getElementById("form-movimiento").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = document.getElementById("movimiento-id").value;
+  const row = {
+    fund_id: document.getElementById("movimiento-fondo").value,
+    type: document.getElementById("movimiento-tipo").value,
+    amount: parseFloat(document.getElementById("movimiento-monto").value) || 0,
+    date: document.getElementById("movimiento-fecha").value,
+    note: document.getElementById("movimiento-nota").value.trim(),
+  };
+  if (!row.fund_id) return;
+  const ok = await saveRow("savings_moves", id, row);
+  if (!ok) return;
+  resetMovimientoForm();
+  await loadAll();
+  renderAll();
+});
+
+document.getElementById("movimiento-cancel-btn").addEventListener("click", resetMovimientoForm);
+
+// ============================================================
+// EDITAR (delegado, carga el registro en su formulario)
+// ============================================================
+document.addEventListener("click", (e) => {
+  if (!e.target.matches(".btn-edit")) return;
+  const { id, kind } = e.target.dataset;
+
+  if (kind === "clients") {
+    const c = state.clients.find((x) => x.id === id);
+    if (!c) return;
+    document.getElementById("cliente-id").value = c.id;
+    document.getElementById("cliente-nombre").value = c.name;
+    document.getElementById("cliente-notas").value = c.notes || "";
+    document.getElementById("cliente-submit-btn").textContent = "Guardar cambios";
+    document.getElementById("cliente-cancel-btn").hidden = false;
+    switchView("clientes");
+    document.getElementById("form-cliente").scrollIntoView({ behavior: "smooth", block: "center" });
+  } else if (kind === "income") {
+    const i = state.income.find((x) => x.id === id);
+    if (!i) return;
+    document.getElementById("ingreso-id").value = i.id;
+    document.getElementById("ingreso-cliente").value = i.client_id;
+    document.getElementById("ingreso-servicio").value = i.service;
+    document.getElementById("ingreso-tipo").value = i.type;
+    document.getElementById("ingreso-monto").value = i.amount;
+    document.getElementById("ingreso-iva").value = i.iva;
+    document.getElementById("ingreso-metodo").value = i.payment_method;
+    document.getElementById("ingreso-fecha").value = i.date;
+    document.getElementById("ingreso-recurrente").checked = i.is_recurring;
+    document.getElementById("ingreso-facturado").checked = !!i.invoiced;
+    document.getElementById("ingreso-folio").value = i.invoice_folio || "";
+    document.getElementById("ingreso-fecha-factura").value = i.invoice_date || "";
+    document.getElementById("ingreso-eur-monto").value = "";
+    document.getElementById("ingreso-eur-tc").value = "";
+    document.getElementById("ingreso-submit-btn").textContent = "Guardar cambios";
+    document.getElementById("ingreso-cancel-btn").hidden = false;
+    switchView("ingresos");
+    document.getElementById("form-ingreso").scrollIntoView({ behavior: "smooth", block: "center" });
+  } else if (kind === "expenses") {
+    const g = state.expenses.find((x) => x.id === id);
+    if (!g) return;
+    document.getElementById("gasto-id").value = g.id;
+    document.getElementById("gasto-descripcion").value = g.description;
+    document.getElementById("gasto-categoria").value = g.category;
+    document.getElementById("gasto-cliente").value = g.client_id || "";
+    document.getElementById("gasto-detalle").value = g.detail || "";
+    document.getElementById("gasto-monto").value = g.amount;
+    document.getElementById("gasto-recurrencia").value = g.recurrence;
+    document.getElementById("gasto-metodo").value = g.payment_method;
+    document.getElementById("gasto-fecha").value = g.date;
+    document.getElementById("gasto-facturado").checked = !!g.invoiced;
+    document.getElementById("gasto-folio").value = g.invoice_folio || "";
+    document.getElementById("gasto-fecha-factura").value = g.invoice_date || "";
+    document.getElementById("gasto-submit-btn").textContent = "Guardar cambios";
+    document.getElementById("gasto-cancel-btn").hidden = false;
+    switchView("gastos");
+    document.getElementById("form-gasto").scrollIntoView({ behavior: "smooth", block: "center" });
+  } else if (kind === "tasks") {
+    const t = state.tasks.find((x) => x.id === id);
+    if (!t) return;
+    document.getElementById("tarea-id").value = t.id;
+    document.getElementById("tarea-titulo").value = t.title;
+    document.getElementById("tarea-categoria").value = t.category;
+    document.getElementById("tarea-cliente").value = t.client_id || "";
+    document.getElementById("tarea-estado").value = t.status;
+    document.getElementById("tarea-prioridad").value = t.priority;
+    document.getElementById("tarea-fecha").value = t.due_date || "";
+    document.getElementById("tarea-submit-btn").textContent = "Guardar cambios";
+    document.getElementById("tarea-cancel-btn").hidden = false;
+    switchView("tareas");
+    document.getElementById("form-tarea").scrollIntoView({ behavior: "smooth", block: "center" });
+  } else if (kind === "savings_funds") {
+    const f = state.savingsFunds.find((x) => x.id === id);
+    if (!f) return;
+    document.getElementById("fondo-id").value = f.id;
+    document.getElementById("fondo-nombre").value = f.name;
+    document.getElementById("fondo-meta").value = f.goal_amount || "";
+    document.getElementById("fondo-submit-btn").textContent = "Guardar cambios";
+    document.getElementById("fondo-cancel-btn").hidden = false;
+    switchView("ahorro");
+    document.getElementById("form-fondo").scrollIntoView({ behavior: "smooth", block: "center" });
+  } else if (kind === "savings_moves") {
+    const m = state.savingsMoves.find((x) => x.id === id);
+    if (!m) return;
+    document.getElementById("movimiento-id").value = m.id;
+    document.getElementById("movimiento-fondo").value = m.fund_id;
+    document.getElementById("movimiento-tipo").value = m.type;
+    document.getElementById("movimiento-monto").value = m.amount;
+    document.getElementById("movimiento-fecha").value = m.date;
+    document.getElementById("movimiento-nota").value = m.note || "";
+    document.getElementById("movimiento-submit-btn").textContent = "Guardar cambios";
+    document.getElementById("movimiento-cancel-btn").hidden = false;
+    switchView("ahorro");
+    document.getElementById("form-movimiento").scrollIntoView({ behavior: "smooth", block: "center" });
+  } else if (kind === "credit_payments") {
+    const p = state.creditPayments.find((x) => x.id === id);
+    if (!p) return;
+    document.getElementById("pago-credito-id").value = p.id;
+    document.getElementById("pago-credito-periodo").value = p.period_key;
+    document.getElementById("pago-credito-monto").value = p.amount;
+    document.getElementById("pago-credito-fecha").value = p.date;
+    document.getElementById("pago-credito-nota").value = p.note || "";
+    document.getElementById("pago-credito-submit-btn").textContent = "Guardar cambios";
+    document.getElementById("pago-credito-cancel-btn").hidden = false;
+    switchView("credito");
+    document.getElementById("form-pago-credito").scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+});
+
+// ============================================================
+// ELIMINAR (delegado, cualquier tabla)
+// ============================================================
+document.addEventListener("click", async (e) => {
+  if (!e.target.matches(".btn-delete")) return;
+  const { id, kind } = e.target.dataset;
+  if (!confirm("¿Eliminar este registro?")) return;
+  const { error } = await supabase.from(kind).delete().eq("id", id);
+  if (error) {
+    alert(`No se pudo eliminar (tabla "${kind}"): ${error.message}`);
+    return;
+  }
+  await loadAll();
+  renderAll();
+});
+
+// ============================================================
+// HISTÓRICO (detalle de meses anteriores, solo lectura)
+// ============================================================
+function renderHistoricoDetalle() {
+  const periodo = currentPeriodKey();
+
+  const ingresosAnteriores = state.income
+    .filter((i) => i.date && i.date.slice(0, 7) !== periodo)
+    .slice()
+    .sort((a, b) => b.date.localeCompare(a.date));
+  document.getElementById("tabla-historico-ingresos").innerHTML =
+    ingresosAnteriores
+      .map(
+        (i) => `
+    <tr>
+      <td>${i.date}</td>
+      <td>${clientName(i.client_id)}</td>
+      <td>${i.service}</td>
+      <td>${i.type}</td>
+      <td class="ing-amount">${money(i.amount)}</td>
+      <td class="ing-amount">${money(i.iva)}</td>
+      <td>
+        <button class="btn-edit" data-id="${i.id}" data-kind="income">Editar</button>
+        <button class="btn-delete" data-id="${i.id}" data-kind="income">Eliminar</button>
+      </td>
+    </tr>`
+      )
+      .join("") || `<tr><td colspan="7" class="muted">Todavía no hay meses anteriores registrados.</td></tr>`;
+
+  const gastosAnteriores = state.expenses
+    .filter((g) => g.date && g.date.slice(0, 7) !== periodo)
+    .slice()
+    .sort((a, b) => b.date.localeCompare(a.date));
+  document.getElementById("tabla-historico-gastos").innerHTML =
+    gastosAnteriores
+      .map(
+        (g) => `
+    <tr>
+      <td>${g.date}</td>
+      <td>${g.description}</td>
+      <td>${g.category}</td>
+      <td>${g.client_id ? clientName(g.client_id) : "—"}</td>
+      <td class="ing-amount">${money(g.amount)}</td>
+      <td>${g.recurrence}</td>
+      <td>${g.payment_method || ""}</td>
+      <td>
+        <button class="btn-edit" data-id="${g.id}" data-kind="expenses">Editar</button>
+        <button class="btn-delete" data-id="${g.id}" data-kind="expenses">Eliminar</button>
+      </td>
+    </tr>`
+      )
+      .join("") || `<tr><td colspan="8" class="muted">Todavía no hay meses anteriores registrados.</td></tr>`;
+}
+
+// ============================================================
+// DASHBOARD
+// ============================================================
+let chartConcentracion, chartCanal;
+
+function renderDashboard() {
+  const period = currentPeriodKey();
+  const incomePeriod = state.income.filter((i) => i.date && i.date.slice(0, 7) === period);
+  const expensesPeriod = state.expenses.filter((g) => g.date && g.date.slice(0, 7) === period);
+
+  const totalIngresos = incomePeriod.reduce((s, i) => s + Number(i.amount || 0), 0);
+  const totalGastos = expensesPeriod.reduce((s, g) => s + Number(g.amount || 0), 0);
+
+  document.getElementById("kpi-ingresos").textContent = money(totalIngresos);
+  document.getElementById("kpi-gastos").textContent = money(totalGastos);
+  document.getElementById("kpi-utilidad").textContent = money(totalIngresos - totalGastos);
+  document.getElementById("kpi-clientes").textContent = state.clients.filter((c) => c.active).length;
+  document.getElementById("kpi-tareas").textContent = state.tasks.filter((t) => t.status !== "Hecho").length;
+  const ahorroTotal = state.savingsFunds.reduce((s, f) => s + fondoAcumulado(f.id), 0);
+  document.getElementById("kpi-ahorro").textContent = money(ahorroTotal);
+  const saldoCreditoActual = totalCorte(currentCorteKey()) - pagadoCorte(currentCorteKey());
+  document.getElementById("kpi-credito").textContent = money(saldoCreditoActual);
+
+  // ---- Concentración de ingresos por cliente (todo el histórico, más representativo que solo el mes) ----
+  const porCliente = {};
+  state.income.forEach((i) => {
+    const key = i.client_id || "sin-cliente";
+    porCliente[key] = (porCliente[key] || 0) + Number(i.amount || 0);
+  });
+  const totalHist = Object.values(porCliente).reduce((s, v) => s + v, 0) || 1;
+  const entries = Object.entries(porCliente)
+    .map(([id, monto]) => ({
+      id,
+      name: id === "sin-cliente" ? "Sin cliente" : clientName(id),
+      monto,
+      pct: monto / totalHist,
+    }))
+    .sort((a, b) => b.monto - a.monto);
+
+  const alertBox = document.getElementById("alert-concentracion");
+  if (entries.length && entries[0].pct > 0.5) {
+    alertBox.hidden = false;
+    alertBox.className = "alert-box";
+    alertBox.textContent = `Alta dependencia de ingresos: ${entries[0].name} representa ${Math.round(
+      entries[0].pct * 100
+    )}% de lo que has facturado — si ese cliente se va, el golpe es grande. Vale la pena diversificar.`;
+  } else if (entries.length) {
+    alertBox.hidden = false;
+    alertBox.className = "alert-box alert-ok";
+    alertBox.textContent = "Tus ingresos están razonablemente repartidos entre clientes — ninguno representa más de la mitad del total.";
+  } else {
+    alertBox.hidden = true;
+  }
+
+  const palette = ["#a0bb37", "#1b1b1a", "#74786a", "#b6cc5c", "#4d5a1a", "#c7cdb8", "#3f4a15", "#9aa87f"];
+  if (chartConcentracion) chartConcentracion.destroy();
+  chartConcentracion = new Chart(document.getElementById("chart-concentracion"), {
+    type: "doughnut",
+    data: {
+      labels: entries.map((e) => e.name),
+      datasets: [{ data: entries.map((e) => e.monto), backgroundColor: palette }],
+    },
+    options: { plugins: { legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 11 } } } } },
+  });
+
+  // ---- Rentabilidad (ingresos) por canal de origen ----
+  const porCanal = {};
+  state.income.forEach((i) => {
+    porCanal[i.type] = (porCanal[i.type] || 0) + Number(i.amount || 0);
+  });
+  const canalEntries = Object.entries(porCanal).sort((a, b) => b[1] - a[1]);
+  if (chartCanal) chartCanal.destroy();
+  chartCanal = new Chart(document.getElementById("chart-canal"), {
+    type: "bar",
+    data: {
+      labels: canalEntries.map((e) => e[0]),
+      datasets: [{ data: canalEntries.map((e) => e[1]), backgroundColor: "#a0bb37" }],
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true } },
+    },
+  });
+
+  // ---- Proyección recurrente mensual ----
+  const ingresoRecurrente = state.income
+    .filter((i) => i.is_recurring)
+    .reduce((s, i) => s + Number(i.amount || 0), 0);
+  const gastoRecurrente = state.expenses
+    .filter((g) => g.recurrence === "Mensual")
+    .reduce((s, g) => s + Number(g.amount || 0), 0);
+  document.getElementById("proyeccion-recurrente").innerHTML = `
+    <div class="stat-row"><span>Ingreso recurrente / mes</span><span class="amount positive ing-amount">${money(ingresoRecurrente)}</span></div>
+    <div class="stat-row"><span>Gasto recurrente / mes</span><span class="amount negative ing-amount">${money(gastoRecurrente)}</span></div>
+    <div class="stat-row"><span>Neto recurrente / mes</span><span class="amount ing-amount">${money(ingresoRecurrente - gastoRecurrente)}</span></div>
+  `;
+
+  // ---- Utilidad por cliente ----
+  const utilidadPorCliente = state.clients.map((c) => {
+    const ingresosC = state.income.filter((i) => i.client_id === c.id).reduce((s, i) => s + Number(i.amount || 0), 0);
+    const gastosC = state.expenses.filter((g) => g.client_id === c.id).reduce((s, g) => s + Number(g.amount || 0), 0);
+    return { name: c.name, utilidad: ingresosC - gastosC };
+  }).sort((a, b) => b.utilidad - a.utilidad);
+  document.getElementById("utilidad-cliente").innerHTML =
+    utilidadPorCliente
+      .map(
+        (u) =>
+          `<div class="stat-row"><span>${u.name}</span><span class="amount ing-amount ${u.utilidad >= 0 ? "positive" : "negative"}">${money(u.utilidad)}</span></div>`
+      )
+      .join("") || `<p class="muted">Todavía no hay clientes con movimientos.</p>`;
+
+  // ---- Próximos pendientes (tareas activas, ordenadas por fecha límite) ----
+  const proximas = state.tasks
+    .filter((t) => t.status !== "Hecho")
+    .slice()
+    .sort((a, b) => {
+      if (!a.due_date && !b.due_date) return 0;
+      if (!a.due_date) return 1;
+      if (!b.due_date) return -1;
+      return a.due_date.localeCompare(b.due_date);
+    })
+    .slice(0, 5);
+  document.getElementById("proximos-pendientes").innerHTML =
+    proximas
+      .map(
+        (t) =>
+          `<div class="stat-row"><span>${t.title}${t.client_id ? " — " + clientName(t.client_id) : ""}</span><span class="amount">${fechaTareaHTML(t)}</span></div>`
+      )
+      .join("") || `<p class="muted">No tienes pendientes activos. 🎉</p>`;
+
+  // ---- Histórico mensual (ingresos + gastos + utilidad, todos los meses con movimientos) ----
+  const porMes = {};
+  state.income.forEach((i) => {
+    if (!i.date) return;
+    const mes = i.date.slice(0, 7);
+    porMes[mes] = porMes[mes] || { ingresos: 0, gastos: 0 };
+    porMes[mes].ingresos += Number(i.amount || 0);
+  });
+  state.expenses.forEach((g) => {
+    if (!g.date) return;
+    const mes = g.date.slice(0, 7);
+    porMes[mes] = porMes[mes] || { ingresos: 0, gastos: 0 };
+    porMes[mes].gastos += Number(g.amount || 0);
+  });
+  const mesesOrdenados = Object.keys(porMes).sort((a, b) => b.localeCompare(a)); // más reciente primero
+  document.getElementById("tabla-historico-mensual").innerHTML =
+    mesesOrdenados
+      .map((mes) => {
+        const { ingresos, gastos } = porMes[mes];
+        const utilidad = ingresos - gastos;
+        return `
+    <tr>
+      <td>${formatMes(mes)}</td>
+      <td class="ing-amount">${money(ingresos)}</td>
+      <td class="ing-amount">${money(gastos)}</td>
+      <td class="${utilidad >= 0 ? "" : "due-overdue"} ing-amount">${money(utilidad)}</td>
+    </tr>`;
+      })
+      .join("") || `<tr><td colspan="4" class="muted">Aún no hay movimientos registrados.</td></tr>`;
+}
+
+// ============================================================
+// PRIVACIDAD (ocultar montos de ingresos con blur + contraseña)
+// ============================================================
+const PRIVACY_KEY = "obitoae_privacy_hidden";
+const privacyBtn = document.getElementById("btn-privacy-toggle");
+
+function isPrivacyOn() {
+  const v = localStorage.getItem(PRIVACY_KEY);
+  return v === null ? true : v === "1"; // oculto por default hasta que se desbloquee con la contraseña
+}
+
+function setPrivacy(on) {
+  appEl.classList.toggle("privacy-on", on);
+  localStorage.setItem(PRIVACY_KEY, on ? "1" : "0");
+  privacyBtn.textContent = on ? "🙈 Ingresos ocultos" : "🙈 Ocultar ingresos";
+}
+
+privacyBtn.addEventListener("click", () => {
+  if (isPrivacyOn()) {
+    const pass = prompt("Contraseña para ver los ingresos:");
+    if (pass === null) return;
+    if (pass !== PRIVACY_PASSWORD) {
+      alert("Contraseña incorrecta.");
+      return;
+    }
+    setPrivacy(false);
+  } else {
+    setPrivacy(true);
+  }
+});
+
+setPrivacy(isPrivacyOn());
+
+// ============================================================
+// INICIO
+// ============================================================
+checkSession();
