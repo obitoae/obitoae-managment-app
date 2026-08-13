@@ -882,9 +882,13 @@ function renderHistoricoDetalle() {
       <td>${i.type}</td>
       <td class="ing-amount">${money(i.amount)}</td>
       <td class="ing-amount">${money(i.iva)}</td>
+      <td>
+        <button class="btn-edit" data-id="${i.id}" data-kind="income">Editar</button>
+        <button class="btn-delete" data-id="${i.id}" data-kind="income">Eliminar</button>
+      </td>
     </tr>`
       )
-      .join("") || `<tr><td colspan="6" class="muted">Todavía no hay meses anteriores registrados.</td></tr>`;
+      .join("") || `<tr><td colspan="7" class="muted">Todavía no hay meses anteriores registrados.</td></tr>`;
 
   const gastosAnteriores = state.expenses
     .filter((g) => g.date && g.date.slice(0, 7) !== periodo)
@@ -901,9 +905,14 @@ function renderHistoricoDetalle() {
       <td>${g.client_id ? clientName(g.client_id) : "—"}</td>
       <td>${money(g.amount)}</td>
       <td>${g.recurrence}</td>
+      <td>${g.payment_method || ""}</td>
+      <td>
+        <button class="btn-edit" data-id="${g.id}" data-kind="expenses">Editar</button>
+        <button class="btn-delete" data-id="${g.id}" data-kind="expenses">Eliminar</button>
+      </td>
     </tr>`
       )
-      .join("") || `<tr><td colspan="6" class="muted">Todavía no hay meses anteriores registrados.</td></tr>`;
+      .join("") || `<tr><td colspan="8" class="muted">Todavía no hay meses anteriores registrados.</td></tr>`;
 }
 
 // ============================================================
@@ -999,7 +1008,7 @@ function renderDashboard() {
     .reduce((s, g) => s + Number(g.amount || 0), 0);
   document.getElementById("proyeccion-recurrente").innerHTML = `
     <div class="stat-row"><span>Ingreso recurrente / mes</span><span class="amount positive ing-amount">${money(ingresoRecurrente)}</span></div>
-    <div class="stat-row"><span>Gasto recurrente / mes</span><span class="amount negative">${money(gastoRecurrente)}</span></div>
+    <div class="stat-row"><span>Gasto recurrente / mes</span><span class="amount negative ing-amount">${money(gastoRecurrente)}</span></div>
     <div class="stat-row"><span>Neto recurrente / mes</span><span class="amount ing-amount">${money(ingresoRecurrente - gastoRecurrente)}</span></div>
   `;
 
@@ -1013,7 +1022,7 @@ function renderDashboard() {
     utilidadPorCliente
       .map(
         (u) =>
-          `<div class="stat-row"><span>${u.name}</span><span class="amount ${u.utilidad >= 0 ? "positive" : "negative"}">${money(u.utilidad)}</span></div>`
+          `<div class="stat-row"><span>${u.name}</span><span class="amount ing-amount ${u.utilidad >= 0 ? "positive" : "negative"}">${money(u.utilidad)}</span></div>`
       )
       .join("") || `<p class="muted">Todavía no hay clientes con movimientos.</p>`;
 
@@ -1060,7 +1069,7 @@ function renderDashboard() {
     <tr>
       <td>${formatMes(mes)}</td>
       <td class="ing-amount">${money(ingresos)}</td>
-      <td>${money(gastos)}</td>
+      <td class="ing-amount">${money(gastos)}</td>
       <td class="${utilidad >= 0 ? "" : "due-overdue"} ing-amount">${money(utilidad)}</td>
     </tr>`;
       })
@@ -1074,7 +1083,8 @@ const PRIVACY_KEY = "obitoae_privacy_hidden";
 const privacyBtn = document.getElementById("btn-privacy-toggle");
 
 function isPrivacyOn() {
-  return localStorage.getItem(PRIVACY_KEY) === "1";
+  const v = localStorage.getItem(PRIVACY_KEY);
+  return v === null ? true : v === "1"; // oculto por default hasta que se desbloquee con la contraseña
 }
 
 function setPrivacy(on) {

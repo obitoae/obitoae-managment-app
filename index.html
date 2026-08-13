@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Obitoae Managment</title>
+<title>Obitoae Management</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
@@ -14,7 +14,7 @@
 <!-- ============== PANTALLA DE LOGIN ============== -->
 <div id="login-screen" class="login-screen">
   <div class="login-card">
-    <h1 class="brand-title">Obitoae Managment</h1>
+    <h1 class="brand-title">Obitoae Management</h1>
     <p class="brand-subtitle">Clientes, ingresos y gastos en un solo lugar.</p>
     <form id="login-form">
       <label>Correo</label>
@@ -31,7 +31,7 @@
 <div id="app" class="app" hidden>
 
   <aside class="sidebar">
-    <div class="sidebar-brand">Obitoae<br>Managment</div>
+    <div class="sidebar-brand">Obitoae<br>Management</div>
     <nav class="sidebar-nav">
       <button class="nav-item active" data-view="dashboard">Panel</button>
       <button class="nav-item" data-view="clientes">Clientes</button>
@@ -64,11 +64,11 @@
         </div>
         <div class="kpi-card">
           <div class="kpi-label">Gastos del periodo</div>
-          <div class="kpi-value" id="kpi-gastos">$0</div>
+          <div class="kpi-value ing-amount" id="kpi-gastos">$0</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-label">Utilidad del periodo</div>
-          <div class="kpi-value" id="kpi-utilidad">$0</div>
+          <div class="kpi-value ing-amount" id="kpi-utilidad">$0</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-label">Clientes activos</div>
@@ -97,7 +97,7 @@
         </div>
         <div class="panel">
           <h3>Rentabilidad por canal de origen</h3>
-          <canvas id="chart-canal"></canvas>
+          <canvas id="chart-canal" class="ing-amount"></canvas>
         </div>
       </div>
 
@@ -447,7 +447,7 @@
     <section id="view-historico" class="view" hidden>
       <header class="view-header">
         <h2>Histórico</h2>
-        <p class="muted">Registro permanente de meses anteriores. Nada se borra al cambiar de mes — el corte es solo visual en Ingresos y Gastos.</p>
+        <p class="muted">Registro permanente de meses anteriores. Nada se borra al cambiar de mes — el corte es solo visual en Ingresos y Gastos. También puedes editar o eliminar estos registros aquí.</p>
       </header>
 
       <div class="panel">
@@ -461,7 +461,7 @@
       <div class="panel">
         <h3>Ingresos de meses anteriores</h3>
         <table class="data-table">
-          <thead><tr><th>Fecha</th><th>Cliente</th><th>Servicio</th><th>Canal</th><th>Monto</th><th>IVA</th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Cliente</th><th>Servicio</th><th>Canal</th><th>Monto</th><th>IVA</th><th></th></tr></thead>
           <tbody id="tabla-historico-ingresos"></tbody>
         </table>
       </div>
@@ -469,7 +469,7 @@
       <div class="panel">
         <h3>Gastos de meses anteriores</h3>
         <table class="data-table">
-          <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Cliente</th><th>Monto</th><th>Recurrencia</th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Cliente</th><th>Monto</th><th>Recurrencia</th><th>Método</th><th></th></tr></thead>
           <tbody id="tabla-historico-gastos"></tbody>
         </table>
       </div>
