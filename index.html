@@ -33,7 +33,8 @@
   <aside class="sidebar">
     <div class="sidebar-brand">Obitoae<br>Management</div>
     <nav class="sidebar-nav">
-      <button class="nav-item active" data-view="dashboard">Panel</button>
+      <button class="nav-item active" data-view="inicio">Inicio</button>
+      <button class="nav-item" data-view="dashboard">Panel</button>
       <button class="nav-item" data-view="clientes">Clientes</button>
 
       <div class="nav-group">
@@ -67,8 +68,29 @@
 
   <main class="main">
 
+    <!-- ---------- INICIO / BIENVENIDA ---------- -->
+    <section id="view-inicio" class="view">
+      <header class="view-header inicio-header">
+        <h2 id="inicio-saludo">Bienvenido, Eduardo</h2>
+        <p class="muted" id="inicio-fecha"></p>
+      </header>
+
+      <div id="inicio-alertas" class="inicio-alertas"></div>
+
+      <div class="grid-2">
+        <div class="panel">
+          <h3>Tarjeta de crédito</h3>
+          <div id="inicio-credito" class="stat-list"></div>
+        </div>
+        <div class="panel">
+          <h3>Resumen rápido</h3>
+          <div id="inicio-resumen" class="stat-list"></div>
+        </div>
+      </div>
+    </section>
+
     <!-- ---------- PANEL / DASHBOARD ---------- -->
-    <section id="view-dashboard" class="view">
+    <section id="view-dashboard" class="view" hidden>
       <header class="view-header">
         <h2>Panel financiero</h2>
         <p class="muted">Se actualiza solo con lo que registres en Ingresos y Gastos.</p>

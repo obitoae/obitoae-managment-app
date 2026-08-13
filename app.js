@@ -75,6 +75,47 @@ function formatMes(mesKey) {
   return `${MESES_ES[parseInt(mes, 10) - 1]} ${anio}`;
 }
 
+const DIAS_ES = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+
+function saludoSegunHora() {
+  const h = new Date().getHours();
+  if (h < 12) return "Buenos días";
+  if (h < 19) return "Buenas tardes";
+  return "Buenas noches";
+}
+
+function fechaLargaHoy() {
+  const d = new Date();
+  return `${DIAS_ES[d.getDay()]}, ${d.getDate()} de ${MESES_ES[d.getMonth()]} de ${d.getFullYear()}`;
+}
+
+// Próxima fecha (YYYY-MM-DD) en la que cae un día fijo del mes (ej. día 26),
+// contando desde hoy — si ya pasó este mes, salta al mes siguiente.
+function proximaFechaDelMes(diaDelMes) {
+  const hoy = todayISO();
+  const [y, m] = hoy.split("-").map(Number);
+  const candidato = `${y}-${String(m).padStart(2, "0")}-${String(diaDelMes).padStart(2, "0")}`;
+  if (candidato >= hoy) return candidato;
+  let ny = y;
+  let nm = m + 1;
+  if (nm > 12) {
+    nm = 1;
+    ny += 1;
+  }
+  return `${ny}-${String(nm).padStart(2, "0")}-${String(diaDelMes).padStart(2, "0")}`;
+}
+
+function diasEntreHoyY(fechaISO) {
+  const hoy = new Date(todayISO() + "T00:00:00");
+  const futura = new Date(fechaISO + "T00:00:00");
+  return Math.round((futura - hoy) / 86400000);
+}
+
+function fechaCortaES(fechaISO) {
+  const [y, m, d] = fechaISO.split("-").map(Number);
+  return `${d} de ${MESES_ES[m - 1]}`;
+}
+
 // ---- Cortes de tarjeta de crédito (cierran el día 26 de cada mes) ----
 function cortePeriodKey(dateStr) {
   if (!dateStr) return null;
@@ -269,6 +310,91 @@ function renderAll() {
   renderAhorroView();
   renderHistoricoDetalle();
   renderDashboard();
+  renderInicioView();
+}
+
+// ============================================================
+// INICIO / BIENVENIDA
+// ============================================================
+function renderInicioView() {
+  document.getElementById("inicio-saludo").textContent = `${saludoSegunHora()}, Eduardo`;
+  document.getElementById("inicio-fecha").textContent = fechaLargaHoy();
+
+  const hoy = todayISO();
+
+  const pendientes = state.tasks.filter((t) => t.status !== "Hecho" && t.due_date);
+  const vencidas = pendientes.filter((t) => t.due_date < hoy).sort((a, b) => a.due_date.localeCompare(b.due_date));
+  const limite7 = new Date(hoy + "T00:00:00");
+  limite7.setDate(limite7.getDate() + 7);
+  const limite7ISO = limite7.toISOString().slice(0, 10);
+  const proximas = pendientes
+    .filter((t) => t.due_date >= hoy && t.due_date <= limite7ISO)
+    .sort((a, b) => a.due_date.localeCompare(b.due_date));
+
+  const alertasHTML = [];
+
+  if (vencidas.length) {
+    alertasHTML.push(`
+      <div class="alert-box">
+        <div class="inicio-alert-title">⚠️ Tienes ${vencidas.length} tarea${vencidas.length > 1 ? "s" : ""} vencida${vencidas.length > 1 ? "s" : ""}</div>
+        <div class="inicio-alert-list">
+          ${vencidas
+            .slice(0, 6)
+            .map((t) => `<div class="inicio-alert-item"><span>${t.title}</span><span class="item-fecha">${fechaCortaES(t.due_date)}</span></div>`)
+            .join("")}
+        </div>
+      </div>`);
+  }
+
+  if (proximas.length) {
+    alertasHTML.push(`
+      <div class="alert-box alert-warn">
+        <div class="inicio-alert-title">🔔 ${proximas.length} tarea${proximas.length > 1 ? "s" : ""} por vencer esta semana</div>
+        <div class="inicio-alert-list">
+          ${proximas
+            .slice(0, 6)
+            .map((t) => `<div class="inicio-alert-item"><span>${t.title}</span><span class="item-fecha">${fechaCortaES(t.due_date)}</span></div>`)
+            .join("")}
+        </div>
+      </div>`);
+  }
+
+  if (!vencidas.length && !proximas.length) {
+    alertasHTML.push(`
+      <div class="alert-box alert-ok">
+        <div class="inicio-alert-title">🎉 Vas al día — sin tareas vencidas ni por vencer esta semana.</div>
+      </div>`);
+  }
+
+  document.getElementById("inicio-alertas").innerHTML = alertasHTML.join("");
+
+  // ---- Tarjeta de crédito: próximos corte y pago ----
+  const proximoCorte = proximaFechaDelMes(26);
+  const proximoPago = proximaFechaDelMes(5);
+  const diasCorte = diasEntreHoyY(proximoCorte);
+  const diasPago = diasEntreHoyY(proximoPago);
+  const actual = currentCorteKey();
+  const saldoActual = totalCorte(actual) - pagadoCorte(actual);
+
+  document.getElementById("inicio-credito").innerHTML = `
+    <div class="stat-row"><span>Próximo corte</span><span class="amount">${fechaCortaES(proximoCorte)} (en ${diasCorte} día${diasCorte === 1 ? "" : "s"})</span></div>
+    <div class="stat-row"><span>Próximo pago</span><span class="amount ${diasPago <= 3 ? "negative" : ""}">${fechaCortaES(proximoPago)} (en ${diasPago} día${diasPago === 1 ? "" : "s"})</span></div>
+    <div class="stat-row"><span>Saldo actual del corte</span><span class="amount ing-amount">${money(saldoActual)}</span></div>
+  `;
+
+  // ---- Resumen rápido ----
+  const periodo = currentPeriodKey();
+  const ingresosMes = state.income.filter((i) => i.date && i.date.slice(0, 7) === periodo).reduce((s, i) => s + Number(i.amount || 0), 0);
+  const gastosMes = state.expenses.filter((g) => g.date && g.date.slice(0, 7) === periodo).reduce((s, g) => s + Number(g.amount || 0), 0);
+  const ahorroTotal = state.savingsFunds.reduce((s, f) => s + fondoAcumulado(f.id), 0);
+
+  document.getElementById("inicio-resumen").innerHTML = `
+    <div class="stat-row"><span>Tareas pendientes</span><span class="amount">${pendientes.length}</span></div>
+    <div class="stat-row"><span>Ingresos del mes</span><span class="amount positive ing-amount">${money(ingresosMes)}</span></div>
+    <div class="stat-row"><span>Gastos del mes</span><span class="amount negative ing-amount">${money(gastosMes)}</span></div>
+    <div class="stat-row"><span>Utilidad del mes</span><span class="amount ing-amount">${money(ingresosMes - gastosMes)}</span></div>
+    <div class="stat-row"><span>Ahorro total</span><span class="amount ing-amount">${money(ahorroTotal)}</span></div>
+  `;
 }
 
 // ============================================================

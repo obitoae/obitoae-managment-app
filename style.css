@@ -97,6 +97,16 @@ input, select, button { font-family: var(--font-body); }
   font-size: 13px; margin-bottom: 20px; font-style: italic; font-family: var(--font-body);
 }
 .alert-box.alert-ok { background: var(--green-bg); color: #4b5a1f; font-style: normal; }
+.alert-box.alert-warn { background: #fdf1d9; color: #8a5a1f; font-style: normal; }
+
+/* ---------------- Inicio / Bienvenida ---------------- */
+.inicio-header h2 { font-size: 36px; }
+.inicio-alertas { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
+.inicio-alertas .alert-box { margin-bottom: 0; }
+.inicio-alert-title { font-weight: bold; font-size: 14px; margin-bottom: 6px; font-style: normal; }
+.inicio-alert-list { display: flex; flex-direction: column; gap: 4px; font-style: normal; }
+.inicio-alert-list .inicio-alert-item { display: flex; justify-content: space-between; gap: 12px; }
+.inicio-alert-item .item-fecha { white-space: nowrap; font-weight: bold; }
 
 /* ---------------- Grids / panels ---------------- */
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
