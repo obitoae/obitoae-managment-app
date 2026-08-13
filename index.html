@@ -110,11 +110,15 @@
       <div class="grid-2">
         <div class="panel">
           <h3>Concentración de ingresos por cliente</h3>
-          <canvas id="chart-concentracion" class="ing-amount"></canvas>
+          <div class="chart-wrap">
+            <canvas id="chart-concentracion" class="ing-amount"></canvas>
+          </div>
         </div>
         <div class="panel">
           <h3>Rentabilidad por canal de origen</h3>
-          <canvas id="chart-canal" class="ing-amount"></canvas>
+          <div class="chart-wrap">
+            <canvas id="chart-canal" class="ing-amount"></canvas>
+          </div>
         </div>
       </div>
 
@@ -155,10 +159,12 @@
 
       <div class="panel">
         <h3>Tus clientes</h3>
+        <div class="table-scroll">
         <table class="data-table">
           <thead><tr><th>Nombre</th><th>Notas</th><th>Activo</th><th></th></tr></thead>
           <tbody id="tabla-clientes"></tbody>
         </table>
+        </div>
       </div>
     </section>
 
@@ -225,10 +231,12 @@
       </header>
 
       <div class="panel">
+        <div class="table-scroll">
         <table class="data-table">
           <thead><tr><th>Título</th><th>Categoría</th><th>Cliente</th><th>Prioridad</th><th>Fecha límite</th><th></th></tr></thead>
           <tbody id="tabla-tareas-historico"></tbody>
         </table>
+        </div>
       </div>
     </section>
 
@@ -285,10 +293,12 @@
 
       <div class="panel">
         <h3>Historial de ingresos (este mes)</h3>
+        <div class="table-scroll">
         <table class="data-table">
           <thead><tr><th>Fecha</th><th>Cliente</th><th>Servicio</th><th>Canal</th><th>Monto</th><th>IVA</th><th>Método</th><th>Recurrente</th><th>Facturado</th><th></th></tr></thead>
           <tbody id="tabla-ingresos"></tbody>
         </table>
+        </div>
       </div>
     </section>
 
@@ -337,10 +347,12 @@
 
       <div class="panel">
         <h3>Historial de gastos (este mes)</h3>
+        <div class="table-scroll">
         <table class="data-table">
           <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Cliente</th><th>Monto</th><th>Recurrencia</th><th>Método</th><th>Facturado</th><th></th></tr></thead>
           <tbody id="tabla-gastos"></tbody>
         </table>
+        </div>
       </div>
     </section>
 
@@ -375,10 +387,12 @@
 
       <div class="panel">
         <h3>Gastos a crédito de este corte</h3>
+        <div class="table-scroll">
         <table class="data-table">
           <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th></tr></thead>
           <tbody id="tabla-credito-gastos"></tbody>
         </table>
+        </div>
       </div>
 
       <div class="panel">
@@ -404,18 +418,22 @@
 
       <div class="panel">
         <h3>Pagos registrados</h3>
+        <div class="table-scroll">
         <table class="data-table">
           <thead><tr><th>Fecha</th><th>Corte</th><th>Monto</th><th>Nota</th><th></th></tr></thead>
           <tbody id="tabla-pagos-credito"></tbody>
         </table>
+        </div>
       </div>
 
       <div class="panel">
         <h3>Historial de cortes</h3>
+        <div class="table-scroll">
         <table class="data-table">
           <thead><tr><th>Corte</th><th>Total gastado</th><th>Pagado</th><th>Saldo</th><th>Estado</th></tr></thead>
           <tbody id="tabla-historico-cortes"></tbody>
         </table>
+        </div>
       </div>
     </section>
 
@@ -441,10 +459,12 @@
 
       <div class="panel">
         <h3>Tus fondos</h3>
+        <div class="table-scroll">
         <table class="data-table">
           <thead><tr><th>Nombre</th><th>Meta</th><th>Acumulado</th><th>Avance</th><th></th></tr></thead>
           <tbody id="tabla-fondos"></tbody>
         </table>
+        </div>
       </div>
 
       <div class="panel">
@@ -469,10 +489,12 @@
 
       <div class="panel">
         <h3>Movimientos</h3>
+        <div class="table-scroll">
         <table class="data-table">
           <thead><tr><th>Fecha</th><th>Fondo</th><th>Tipo</th><th>Monto</th><th>Nota</th><th></th></tr></thead>
           <tbody id="tabla-movimientos"></tbody>
         </table>
+        </div>
       </div>
     </section>
 
@@ -485,26 +507,32 @@
 
       <div class="panel">
         <h3>Resumen mensual (ingresos, gastos y utilidad)</h3>
+        <div class="table-scroll">
         <table class="data-table">
           <thead><tr><th>Mes</th><th>Ingresos</th><th>Gastos</th><th>Utilidad</th></tr></thead>
           <tbody id="tabla-historico-mensual"></tbody>
         </table>
+        </div>
       </div>
 
       <div class="panel">
         <h3>Ingresos de meses anteriores</h3>
+        <div class="table-scroll">
         <table class="data-table">
           <thead><tr><th>Fecha</th><th>Cliente</th><th>Servicio</th><th>Canal</th><th>Monto</th><th>IVA</th><th></th></tr></thead>
           <tbody id="tabla-historico-ingresos"></tbody>
         </table>
+        </div>
       </div>
 
       <div class="panel">
         <h3>Gastos de meses anteriores</h3>
+        <div class="table-scroll">
         <table class="data-table">
           <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Cliente</th><th>Monto</th><th>Recurrencia</th><th>Método</th><th></th></tr></thead>
           <tbody id="tabla-historico-gastos"></tbody>
         </table>
+        </div>
       </div>
     </section>
 

@@ -1029,7 +1029,11 @@ function renderDashboard() {
       labels: entries.map((e) => e.name),
       datasets: [{ data: entries.map((e) => e.monto), backgroundColor: palette }],
     },
-    options: { plugins: { legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 11 } } } } },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 11 } } } },
+    },
   });
 
   // ---- Rentabilidad (ingresos) por canal de origen ----
@@ -1046,6 +1050,8 @@ function renderDashboard() {
       datasets: [{ data: canalEntries.map((e) => e[1]), backgroundColor: "#a0bb37" }],
     },
     options: {
+      responsive: true,
+      maintainAspectRatio: false,
       plugins: { legend: { display: false } },
       scales: { y: { beginAtZero: true } },
     },
