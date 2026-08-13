@@ -40,6 +40,36 @@ input, select, button { font-family: var(--font-body); }
 }
 .error-text { color: #e07a5f; font-size: 13px; margin-top: 12px; }
 
+/* ---------------- Portada ---------------- */
+.cover-screen {
+  position: fixed; inset: 0; z-index: 50;
+  background: radial-gradient(circle at 50% 38%, #2a2a24 0%, var(--dark) 72%);
+  display: flex; align-items: center; justify-content: center;
+}
+.cover-screen[hidden] { display: none; }
+.cover-content { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding: 24px; }
+.cover-eyebrow {
+  color: var(--green-soft); font-size: 12px; letter-spacing: 0.3em; text-transform: uppercase;
+  font-family: var(--font-body); margin: 0 0 6px; font-weight: 500;
+}
+.cover-name {
+  color: var(--green); font-family: var(--font-display); font-weight: 700;
+  font-size: 160px; letter-spacing: 0.01em; line-height: 1; margin: 0;
+}
+.cover-sub { color: #8d9180; font-size: 14px; margin: 10px 0 30px; font-family: var(--font-body); }
+.btn-cover-ingresar {
+  background: var(--green); color: var(--dark); border: none; border-radius: 30px;
+  padding: 15px 52px; font-size: 15px; font-weight: bold; letter-spacing: 0.06em;
+  cursor: pointer; font-family: var(--font-body); transition: background 0.15s ease, transform 0.15s ease;
+}
+.btn-cover-ingresar:hover { background: var(--green-soft); transform: translateY(-2px); }
+.btn-cover-ingresar:active { transform: translateY(0); }
+
+@media (max-width: 600px) {
+  .cover-name { font-size: 72px; }
+  .cover-eyebrow { font-size: 11px; letter-spacing: 0.22em; }
+}
+
 /* ---------------- App shell ---------------- */
 .app { display: flex; min-height: 100vh; }
 .app[hidden] { display: none; }

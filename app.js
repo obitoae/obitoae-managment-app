@@ -153,6 +153,7 @@ let state = { clients: [], income: [], expenses: [], tasks: [], savingsFunds: []
 // AUTH
 // ============================================================
 const loginScreen = document.getElementById("login-screen");
+const coverScreen = document.getElementById("cover-screen");
 const appEl = document.getElementById("app");
 
 async function checkSession() {
@@ -166,15 +167,26 @@ async function checkSession() {
 
 function showLogin() {
   loginScreen.hidden = false;
+  coverScreen.hidden = true;
   appEl.hidden = true;
 }
 
+// Portada: se muestra siempre después de entrar, antes de la app. Los datos
+// se cargan de fondo mientras el usuario la ve, así que al tocar "Ingresar"
+// todo ya está listo.
 async function showApp() {
   loginScreen.hidden = true;
-  appEl.hidden = false;
+  appEl.hidden = true;
+  coverScreen.hidden = false;
+  document.getElementById("cover-fecha").textContent = fechaLargaHoy();
   await loadAll();
   renderAll();
 }
+
+document.getElementById("btn-cover-ingresar").addEventListener("click", () => {
+  coverScreen.hidden = true;
+  appEl.hidden = false;
+});
 
 document.getElementById("login-form").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -938,7 +950,7 @@ function renderAhorroView() {
         }
         return `
     <tr>
-      <td>${f.name}</td>
+      <td class="ing-amount">${f.name}</td>
       <td class="ing-amount">${f.goal_amount ? money(f.goal_amount) : "—"}</td>
       <td class="ing-amount">${money(acumulado)}</td>
       <td>${avance}</td>
@@ -957,7 +969,7 @@ function renderAhorroView() {
         (m) => `
     <tr>
       <td>${m.date}</td>
-      <td>${fondoName(m.fund_id)}</td>
+      <td class="ing-amount">${fondoName(m.fund_id)}</td>
       <td>${m.type}</td>
       <td class="ing-amount">${money(m.amount)}</td>
       <td>${m.note || ""}</td>
