@@ -482,7 +482,7 @@ function renderGastosView() {
       (g) => `
     <tr>
       <td>${g.date}</td>
-      <td>${g.description}</td>
+      <td class="ing-amount">${g.description}</td>
       <td>${g.category}</td>
       <td>${g.client_id ? clientName(g.client_id) : "—"}</td>
       <td class="ing-amount">${money(g.amount)}</td>
