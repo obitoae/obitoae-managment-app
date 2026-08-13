@@ -9,6 +9,15 @@ const money = (n) =>
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const currentPeriodKey = () => new Date().toISOString().slice(0, 7); // "YYYY-MM"
 
+const MESES_ES = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+];
+function formatMes(mesKey) {
+  const [anio, mes] = mesKey.split("-");
+  return `${MESES_ES[parseInt(mes, 10) - 1]} ${anio}`;
+}
+
 let state = { clients: [], income: [], expenses: [], tasks: [] };
 
 // ============================================================
@@ -97,6 +106,7 @@ function renderAll() {
   renderTareasView();
   renderIngresosView();
   renderGastosView();
+  renderHistoricoDetalle();
   renderDashboard();
 }
 
@@ -164,44 +174,72 @@ function fechaTareaHTML(t) {
   return vencida ? `<span class="due-overdue">${t.due_date}</span>` : t.due_date;
 }
 
-function renderTareasView() {
-  const activas = state.tasks.filter((t) => t.status !== "Hecho");
-  const hechas = state.tasks
-    .filter((t) => t.status === "Hecho")
-    .slice(0, 10);
+function sortByDue(a, b) {
+  if (!a.due_date && !b.due_date) return 0;
+  if (!a.due_date) return 1;
+  if (!b.due_date) return -1;
+  return a.due_date.localeCompare(b.due_date);
+}
 
-  document.getElementById("tabla-tareas-activas").innerHTML = activas
-    .map(
-      (t) => `
-    <tr>
-      <td>${t.title}</td>
-      <td>${t.category}</td>
-      <td>${t.client_id ? clientName(t.client_id) : "—"}</td>
-      <td><span class="priority-tag ${t.priority}">${t.priority}</span></td>
-      <td>${fechaTareaHTML(t)}</td>
-      <td>${t.status}</td>
-      <td>
-        <button class="btn-done" data-id="${t.id}" data-kind="tasks">Hecho</button>
+function tareaCardHTML(t) {
+  const moveButtons = [];
+  if (t.status === "Pendiente") {
+    moveButtons.push(`<button class="kanban-move-btn" data-id="${t.id}" data-to="En curso">→ En curso</button>`);
+  } else if (t.status === "En curso") {
+    moveButtons.push(`<button class="kanban-move-btn" data-id="${t.id}" data-to="Pendiente">← Pendiente</button>`);
+    moveButtons.push(`<button class="kanban-move-btn" data-id="${t.id}" data-to="Hecho">→ Hecho</button>`);
+  } else if (t.status === "Hecho") {
+    moveButtons.push(`<button class="kanban-move-btn" data-id="${t.id}" data-to="En curso">← Reabrir</button>`);
+  }
+  return `
+    <div class="kanban-card">
+      <div class="kanban-card-title">${t.title}</div>
+      <div class="kanban-card-meta">
+        <span class="priority-tag ${t.priority}">${t.priority}</span>
+        <span>${t.category}</span>
+        ${t.client_id ? `<span>${clientName(t.client_id)}</span>` : ""}
+        ${t.due_date ? `<span>${fechaTareaHTML(t)}</span>` : ""}
+      </div>
+      <div class="kanban-card-actions">
+        ${moveButtons.join("")}
         <button class="btn-edit" data-id="${t.id}" data-kind="tasks">Editar</button>
         <button class="btn-delete" data-id="${t.id}" data-kind="tasks">Eliminar</button>
-      </td>
-    </tr>`
-    )
-    .join("") || `<tr><td colspan="7" class="muted">No tienes tareas pendientes. 🎉</td></tr>`;
-
-  document.getElementById("tabla-tareas-hechas").innerHTML = hechas
-    .map(
-      (t) => `
-    <tr>
-      <td>${t.title}</td>
-      <td>${t.category}</td>
-      <td>${t.client_id ? clientName(t.client_id) : "—"}</td>
-      <td>${t.due_date || "—"}</td>
-      <td><button class="btn-delete" data-id="${t.id}" data-kind="tasks">Eliminar</button></td>
-    </tr>`
-    )
-    .join("") || `<tr><td colspan="5" class="muted">Aún no marcas ninguna tarea como hecha.</td></tr>`;
+      </div>
+    </div>`;
 }
+
+function renderTareasView() {
+  const porEstado = { Pendiente: [], "En curso": [], Hecho: [] };
+  state.tasks.forEach((t) => {
+    if (porEstado[t.status]) porEstado[t.status].push(t);
+  });
+
+  porEstado["Pendiente"].sort(sortByDue);
+  porEstado["En curso"].sort(sortByDue);
+  const hechoOrdenado = porEstado["Hecho"]
+    .slice()
+    .sort((a, b) => (b.due_date || "").localeCompare(a.due_date || ""))
+    .slice(0, 15);
+
+  document.getElementById("count-pendiente").textContent = porEstado["Pendiente"].length;
+  document.getElementById("count-encurso").textContent = porEstado["En curso"].length;
+  document.getElementById("count-hecho").textContent = porEstado["Hecho"].length;
+
+  document.getElementById("kanban-pendiente").innerHTML =
+    porEstado["Pendiente"].map(tareaCardHTML).join("") || `<p class="muted">Sin tareas aquí. 🎉</p>`;
+  document.getElementById("kanban-encurso").innerHTML =
+    porEstado["En curso"].map(tareaCardHTML).join("") || `<p class="muted">Sin tareas aquí.</p>`;
+  document.getElementById("kanban-hecho").innerHTML =
+    hechoOrdenado.map(tareaCardHTML).join("") || `<p class="muted">Sin tareas aquí todavía.</p>`;
+}
+
+document.addEventListener("click", async (e) => {
+  if (!e.target.matches(".kanban-move-btn")) return;
+  const { id, to } = e.target.dataset;
+  await supabase.from("tasks").update({ status: to }).eq("id", id);
+  await loadAll();
+  renderAll();
+});
 
 function resetTareaForm() {
   document.getElementById("form-tarea").reset();
@@ -241,9 +279,11 @@ document.getElementById("ingreso-fecha").value = todayISO();
 
 function renderIngresosView() {
   const tbody = document.getElementById("tabla-ingresos");
-  tbody.innerHTML = state.income
-    .map(
-      (i) => `
+  const delMes = state.income.filter((i) => i.date && i.date.slice(0, 7) === currentPeriodKey());
+  tbody.innerHTML =
+    delMes
+      .map(
+        (i) => `
     <tr>
       <td>${i.date}</td>
       <td>${clientName(i.client_id)}</td>
@@ -258,8 +298,8 @@ function renderIngresosView() {
         <button class="btn-delete" data-id="${i.id}" data-kind="income">Eliminar</button>
       </td>
     </tr>`
-    )
-    .join("");
+      )
+      .join("") || `<tr><td colspan="9" class="muted">Aún no registras ingresos este mes.</td></tr>`;
 }
 
 function resetIngresoForm() {
@@ -332,7 +372,8 @@ document.getElementById("gasto-fecha").value = todayISO();
 
 function renderGastosView() {
   const tbody = document.getElementById("tabla-gastos");
-  tbody.innerHTML = state.expenses
+  const delMes = state.expenses.filter((g) => g.date && g.date.slice(0, 7) === currentPeriodKey());
+  tbody.innerHTML = delMes
     .map(
       (g) => `
     <tr>
@@ -349,7 +390,7 @@ function renderGastosView() {
       </td>
     </tr>`
     )
-    .join("");
+    .join("") || `<tr><td colspan="8" class="muted">Aún no registras gastos este mes.</td></tr>`;
 }
 
 function resetGastoForm() {
@@ -451,17 +492,6 @@ document.addEventListener("click", (e) => {
 });
 
 // ============================================================
-// MARCAR TAREA COMO HECHA (delegado, acción rápida)
-// ============================================================
-document.addEventListener("click", async (e) => {
-  if (!e.target.matches(".btn-done")) return;
-  const { id, kind } = e.target.dataset;
-  await supabase.from(kind).update({ status: "Hecho" }).eq("id", id);
-  await loadAll();
-  renderAll();
-});
-
-// ============================================================
 // ELIMINAR (delegado, cualquier tabla)
 // ============================================================
 document.addEventListener("click", async (e) => {
@@ -472,6 +502,51 @@ document.addEventListener("click", async (e) => {
   await loadAll();
   renderAll();
 });
+
+// ============================================================
+// HISTÓRICO (detalle de meses anteriores, solo lectura)
+// ============================================================
+function renderHistoricoDetalle() {
+  const periodo = currentPeriodKey();
+
+  const ingresosAnteriores = state.income
+    .filter((i) => i.date && i.date.slice(0, 7) !== periodo)
+    .slice()
+    .sort((a, b) => b.date.localeCompare(a.date));
+  document.getElementById("tabla-historico-ingresos").innerHTML =
+    ingresosAnteriores
+      .map(
+        (i) => `
+    <tr>
+      <td>${i.date}</td>
+      <td>${clientName(i.client_id)}</td>
+      <td>${i.service}</td>
+      <td>${i.type}</td>
+      <td>${money(i.amount)}</td>
+      <td>${money(i.iva)}</td>
+    </tr>`
+      )
+      .join("") || `<tr><td colspan="6" class="muted">Todavía no hay meses anteriores registrados.</td></tr>`;
+
+  const gastosAnteriores = state.expenses
+    .filter((g) => g.date && g.date.slice(0, 7) !== periodo)
+    .slice()
+    .sort((a, b) => b.date.localeCompare(a.date));
+  document.getElementById("tabla-historico-gastos").innerHTML =
+    gastosAnteriores
+      .map(
+        (g) => `
+    <tr>
+      <td>${g.date}</td>
+      <td>${g.description}</td>
+      <td>${g.category}</td>
+      <td>${g.client_id ? clientName(g.client_id) : "—"}</td>
+      <td>${money(g.amount)}</td>
+      <td>${g.recurrence}</td>
+    </tr>`
+      )
+      .join("") || `<tr><td colspan="6" class="muted">Todavía no hay meses anteriores registrados.</td></tr>`;
+}
 
 // ============================================================
 // DASHBOARD
@@ -598,6 +673,36 @@ function renderDashboard() {
           `<div class="stat-row"><span>${t.title}${t.client_id ? " — " + clientName(t.client_id) : ""}</span><span class="amount">${fechaTareaHTML(t)}</span></div>`
       )
       .join("") || `<p class="muted">No tienes pendientes activos. 🎉</p>`;
+
+  // ---- Histórico mensual (ingresos + gastos + utilidad, todos los meses con movimientos) ----
+  const porMes = {};
+  state.income.forEach((i) => {
+    if (!i.date) return;
+    const mes = i.date.slice(0, 7);
+    porMes[mes] = porMes[mes] || { ingresos: 0, gastos: 0 };
+    porMes[mes].ingresos += Number(i.amount || 0);
+  });
+  state.expenses.forEach((g) => {
+    if (!g.date) return;
+    const mes = g.date.slice(0, 7);
+    porMes[mes] = porMes[mes] || { ingresos: 0, gastos: 0 };
+    porMes[mes].gastos += Number(g.amount || 0);
+  });
+  const mesesOrdenados = Object.keys(porMes).sort((a, b) => b.localeCompare(a)); // más reciente primero
+  document.getElementById("tabla-historico-mensual").innerHTML =
+    mesesOrdenados
+      .map((mes) => {
+        const { ingresos, gastos } = porMes[mes];
+        const utilidad = ingresos - gastos;
+        return `
+    <tr>
+      <td>${formatMes(mes)}</td>
+      <td>${money(ingresos)}</td>
+      <td>${money(gastos)}</td>
+      <td class="${utilidad >= 0 ? "" : "due-overdue"}">${money(utilidad)}</td>
+    </tr>`;
+      })
+      .join("") || `<tr><td colspan="4" class="muted">Aún no hay movimientos registrados.</td></tr>`;
 }
 
 // ============================================================

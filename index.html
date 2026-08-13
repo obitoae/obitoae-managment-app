@@ -38,6 +38,7 @@
       <button class="nav-item" data-view="tareas">Tareas</button>
       <button class="nav-item" data-view="ingresos">Ingresos</button>
       <button class="nav-item" data-view="gastos">Gastos</button>
+      <button class="nav-item" data-view="historico">Histórico</button>
     </nav>
     <button id="logout-btn" class="btn-logout">Cerrar sesión</button>
   </aside>
@@ -167,19 +168,21 @@
       </div>
 
       <div class="panel">
-        <h3>Pendientes y en curso</h3>
-        <table class="data-table">
-          <thead><tr><th>Título</th><th>Categoría</th><th>Cliente</th><th>Prioridad</th><th>Fecha límite</th><th>Estado</th><th></th></tr></thead>
-          <tbody id="tabla-tareas-activas"></tbody>
-        </table>
-      </div>
-
-      <div class="panel">
-        <h3>Hechas (últimas 10)</h3>
-        <table class="data-table">
-          <thead><tr><th>Título</th><th>Categoría</th><th>Cliente</th><th>Fecha límite</th><th></th></tr></thead>
-          <tbody id="tabla-tareas-hechas"></tbody>
-        </table>
+        <h3>Tablero de tareas</h3>
+        <div class="kanban-board">
+          <div class="kanban-column">
+            <div class="kanban-column-header"><span>Pendiente</span><span class="kanban-count" id="count-pendiente">0</span></div>
+            <div id="kanban-pendiente"></div>
+          </div>
+          <div class="kanban-column">
+            <div class="kanban-column-header"><span>En curso</span><span class="kanban-count" id="count-encurso">0</span></div>
+            <div id="kanban-encurso"></div>
+          </div>
+          <div class="kanban-column">
+            <div class="kanban-column-header"><span>Hecho</span><span class="kanban-count" id="count-hecho">0</span></div>
+            <div id="kanban-hecho"></div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -187,6 +190,7 @@
     <section id="view-ingresos" class="view" hidden>
       <header class="view-header">
         <h2>Registrar ingreso</h2>
+        <p class="muted">El historial de abajo muestra solo el mes en curso. Los meses anteriores se guardan en Histórico.</p>
       </header>
 
       <div class="panel">
@@ -231,7 +235,7 @@
       </div>
 
       <div class="panel">
-        <h3>Historial de ingresos</h3>
+        <h3>Historial de ingresos (este mes)</h3>
         <table class="data-table">
           <thead><tr><th>Fecha</th><th>Cliente</th><th>Servicio</th><th>Canal</th><th>Monto</th><th>IVA</th><th>Método</th><th>Recurrente</th><th></th></tr></thead>
           <tbody id="tabla-ingresos"></tbody>
@@ -243,6 +247,7 @@
     <section id="view-gastos" class="view" hidden>
       <header class="view-header">
         <h2>Registrar gasto</h2>
+        <p class="muted">El historial de abajo muestra solo el mes en curso. Los meses anteriores se guardan en Histórico.</p>
       </header>
 
       <div class="panel">
@@ -279,10 +284,42 @@
       </div>
 
       <div class="panel">
-        <h3>Historial de gastos</h3>
+        <h3>Historial de gastos (este mes)</h3>
         <table class="data-table">
           <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Cliente</th><th>Monto</th><th>Recurrencia</th><th>Método</th><th></th></tr></thead>
           <tbody id="tabla-gastos"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ---------- HISTÓRICO ---------- -->
+    <section id="view-historico" class="view" hidden>
+      <header class="view-header">
+        <h2>Histórico</h2>
+        <p class="muted">Registro permanente de meses anteriores. Nada se borra al cambiar de mes — el corte es solo visual en Ingresos y Gastos.</p>
+      </header>
+
+      <div class="panel">
+        <h3>Resumen mensual (ingresos, gastos y utilidad)</h3>
+        <table class="data-table">
+          <thead><tr><th>Mes</th><th>Ingresos</th><th>Gastos</th><th>Utilidad</th></tr></thead>
+          <tbody id="tabla-historico-mensual"></tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h3>Ingresos de meses anteriores</h3>
+        <table class="data-table">
+          <thead><tr><th>Fecha</th><th>Cliente</th><th>Servicio</th><th>Canal</th><th>Monto</th><th>IVA</th></tr></thead>
+          <tbody id="tabla-historico-ingresos"></tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h3>Gastos de meses anteriores</h3>
+        <table class="data-table">
+          <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Cliente</th><th>Monto</th><th>Recurrencia</th></tr></thead>
+          <tbody id="tabla-historico-gastos"></tbody>
         </table>
       </div>
     </section>

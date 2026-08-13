@@ -125,17 +125,36 @@ input, select, button { font-family: var(--font-body); }
   background: none; border: none; color: var(--red); cursor: pointer; font-size: 13px; text-decoration: underline;
   font-family: var(--font-body); margin-left: 14px;
 }
-.btn-done {
-  background: none; border: none; color: #5c7a1f; cursor: pointer; font-size: 12px; font-weight: bold; text-decoration: underline;
-  font-family: var(--font-body); margin-right: 10px;
-}
-
 /* ---------------- Tareas: prioridad y vencimiento ---------------- */
 .priority-tag { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold; text-transform: uppercase; }
 .priority-tag.Alta { background: var(--red-bg); color: var(--red); }
 .priority-tag.Media { background: var(--green-bg); color: #5c7a1f; }
 .priority-tag.Baja { background: #eef0e9; color: var(--muted); }
 .due-overdue { color: var(--red); font-weight: bold; }
+
+/* ---------------- Tareas: tablero Kanban ---------------- */
+.kanban-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; align-items: start; }
+.kanban-column { background: var(--body-bg); border: 1px solid var(--border); border-radius: 10px; padding: 14px; min-height: 120px; }
+.kanban-column-header {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;
+  font-family: var(--font-display); font-size: 17px; letter-spacing: 0.02em;
+}
+.kanban-count { background: var(--dark); color: var(--green); border-radius: 10px; padding: 2px 9px; font-size: 12px; font-family: var(--font-body); }
+.kanban-column p.muted { margin: 0; }
+.kanban-card {
+  background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 10px;
+}
+.kanban-card-title { font-weight: bold; font-size: 14px; margin-bottom: 6px; }
+.kanban-card-meta {
+  font-size: 12px; color: var(--muted); margin-bottom: 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  font-family: var(--font-body);
+}
+.kanban-card-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.kanban-move-btn {
+  background: none; border: 1px solid var(--border); border-radius: 6px; padding: 3px 9px; font-size: 11px;
+  cursor: pointer; color: var(--text); font-family: var(--font-body);
+}
+.kanban-move-btn:hover { background: var(--green-bg); border-color: var(--green); }
 
 /* ---------------- Conversor EUR -> MXN ---------------- */
 .eur-helper { font-size: 13px; }
@@ -169,6 +188,6 @@ input, select, button { font-family: var(--font-body); }
   .sidebar { width: 100%; flex-direction: row; align-items: center; padding: 12px 16px; }
   .sidebar-brand { margin-bottom: 0; }
   .sidebar-nav { flex-direction: row; flex: 1; overflow-x: auto; }
-  .kpi-row, .grid-2, .form-grid { grid-template-columns: 1fr; }
+  .kpi-row, .grid-2, .form-grid, .kanban-board { grid-template-columns: 1fr; }
   .main { padding: 20px; }
 }
