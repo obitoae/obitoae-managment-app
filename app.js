@@ -9,6 +9,63 @@ const money = (n) =>
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const currentPeriodKey = () => new Date().toISOString().slice(0, 7); // "YYYY-MM"
 
+// ============================================================
+// CALENDARIO: descarga de eventos .ics (Google Calendar, Apple
+// Calendar, Outlook, etc. — todos abren este formato estándar)
+// ============================================================
+function icsEscape(text) {
+  return String(text || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/;/g, "\\;")
+    .replace(/,/g, "\\,")
+    .replace(/\n/g, "\\n");
+}
+
+function downloadICS(filename, events) {
+  const dtstamp = new Date().toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Obitoae Management//ES", "CALSCALE:GREGORIAN"];
+  events.forEach((ev, i) => {
+    const dt = ev.date.replace(/-/g, "");
+    lines.push(
+      "BEGIN:VEVENT",
+      `UID:${dt}-${i}-${Math.random().toString(36).slice(2)}@obitoae-management`,
+      `DTSTAMP:${dtstamp}`,
+      `DTSTART;VALUE=DATE:${dt}`,
+      `SUMMARY:${icsEscape(ev.title)}`
+    );
+    if (ev.description) lines.push(`DESCRIPTION:${icsEscape(ev.description)}`);
+    lines.push("END:VEVENT");
+  });
+  lines.push("END:VCALENDAR");
+  const blob = new Blob([lines.join("\r\n")], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// Regla de pago de tarjeta: el pago del corte que cierra el día 26 de un mes
+// vence el día 5 del mes siguiente.
+function fechaPagoCorte(periodKey) {
+  const [y, m] = periodKey.split("-").map(Number);
+  let payYear = y;
+  let payMonth = m + 1;
+  if (payMonth > 12) {
+    payMonth = 1;
+    payYear += 1;
+  }
+  return `${payYear}-${String(payMonth).padStart(2, "0")}-05`;
+}
+
+function fechaCorteCierre(periodKey) {
+  const [y, m] = periodKey.split("-").map(Number);
+  return `${y}-${String(m).padStart(2, "0")}-26`;
+}
+
 const MESES_ES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
@@ -127,8 +184,8 @@ document.querySelectorAll(".nav-group-header").forEach((header) => {
 // ============================================================
 let loadErrorShown = false;
 
-async function loadAll() {
-  const results = await Promise.all([
+function loadAllQueries() {
+  return [
     supabase.from("clients").select("*").order("name"),
     supabase.from("income").select("*").order("date", { ascending: false }),
     supabase.from("expenses").select("*").order("date", { ascending: false }),
@@ -136,8 +193,27 @@ async function loadAll() {
     supabase.from("savings_funds").select("*").order("name"),
     supabase.from("savings_moves").select("*").order("date", { ascending: false }),
     supabase.from("credit_payments").select("*").order("date", { ascending: false }),
-  ]);
+  ];
+}
+
+async function loadAll() {
   const tableNames = ["clients", "income", "expenses", "tasks", "savings_funds", "savings_moves", "credit_payments"];
+  let results = await Promise.all(loadAllQueries());
+
+  // Reintento automático: errores intermitentes (p. ej. "JWT issued at future" cuando
+  // el token de sesión se refresca de fondo) casi siempre desaparecen solos medio
+  // segundo después, así que reintentamos SOLO las tablas que fallaron antes de
+  // molestar al usuario con la alerta.
+  const fallidasIdx = results.map((r, i) => (r.error ? i : -1)).filter((i) => i !== -1);
+  if (fallidasIdx.length) {
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    const retryQueries = loadAllQueries();
+    const retryResults = await Promise.all(fallidasIdx.map((i) => retryQueries[i]));
+    fallidasIdx.forEach((i, j) => {
+      results[i] = retryResults[j];
+    });
+  }
+
   const fallidas = [];
   results.forEach(({ error }, i) => {
     if (error) fallidas.push(`${tableNames[i]}: ${error.message}`);
@@ -284,6 +360,7 @@ function tareaCardHTML(t) {
       </div>
       <div class="kanban-card-actions">
         ${moveButtons.join("")}
+        ${t.due_date && t.status !== "Hecho" ? `<button class="btn-calendar" data-id="${t.id}" data-kind="task">📅 Calendario</button>` : ""}
         <button class="btn-edit" data-id="${t.id}" data-kind="tasks">Editar</button>
         <button class="btn-delete" data-id="${t.id}" data-kind="tasks">Eliminar</button>
       </div>
@@ -345,6 +422,19 @@ document.addEventListener("click", async (e) => {
   await supabase.from("tasks").update({ status: to }).eq("id", id);
   await loadAll();
   renderAll();
+});
+
+document.addEventListener("click", (e) => {
+  if (!e.target.matches(".btn-calendar")) return;
+  const t = state.tasks.find((x) => x.id === e.target.dataset.id);
+  if (!t || !t.due_date) return;
+  downloadICS(`tarea-${t.title.replace(/[^a-z0-9]+/gi, "-")}.ics`, [
+    {
+      date: t.due_date,
+      title: `Tarea: ${t.title}`,
+      description: `Prioridad: ${t.priority}${t.client_id ? " · Cliente: " + clientName(t.client_id) : ""}`,
+    },
+  ]);
 });
 
 function resetTareaForm() {
@@ -575,6 +665,8 @@ function renderCreditoView() {
   const pagadoActual = pagadoCorte(actual);
   const saldoActual = totalActual - pagadoActual;
   document.getElementById("credito-corte-label").textContent = corteRangeLabel(actual);
+  const btnCalCredito = document.getElementById("btn-add-credito-calendar");
+  if (btnCalCredito) btnCalCredito.dataset.period = actual;
   document.getElementById("credito-corte-total").textContent = money(totalActual);
   document.getElementById("credito-corte-pagado").textContent = money(pagadoActual);
   document.getElementById("credito-corte-saldo").textContent = money(saldoActual);
@@ -665,6 +757,22 @@ document.getElementById("btn-sugerido-credito").addEventListener("click", () => 
   const periodo = document.getElementById("pago-credito-periodo").value;
   const sugerido = totalCorte(periodo) / 2;
   document.getElementById("pago-credito-monto").value = sugerido.toFixed(2);
+});
+
+document.getElementById("btn-add-credito-calendar").addEventListener("click", (e) => {
+  const periodo = e.target.dataset.period || currentCorteKey();
+  downloadICS(`tarjeta-corte-${periodo}.ics`, [
+    {
+      date: fechaCorteCierre(periodo),
+      title: "Corte de tarjeta de crédito",
+      description: corteRangeLabel(periodo),
+    },
+    {
+      date: fechaPagoCorte(periodo),
+      title: "Pago de tarjeta de crédito",
+      description: `Vence el pago del corte: ${corteRangeLabel(periodo)}`,
+    },
+  ]);
 });
 
 // ============================================================

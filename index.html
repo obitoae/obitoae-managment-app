@@ -364,8 +364,11 @@
       </header>
 
       <div class="panel">
-        <h3 id="credito-corte-label">Corte actual</h3>
-        <div class="kpi-row" style="grid-template-columns: repeat(4, 1fr);">
+        <div class="panel-header-row">
+          <h3 id="credito-corte-label">Corte actual</h3>
+          <button id="btn-add-credito-calendar" class="btn-calendar">📅 Agregar corte y pago al calendario</button>
+        </div>
+        <div class="kpi-row kpi-row-4">
           <div class="kpi-card">
             <div class="kpi-label">Total del corte</div>
             <div class="kpi-value ing-amount" id="credito-corte-total">$0</div>
