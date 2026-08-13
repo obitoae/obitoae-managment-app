@@ -101,13 +101,15 @@ document.getElementById("logout-btn").addEventListener("click", async () => {
 // ============================================================
 // NAVEGACIÓN
 // ============================================================
+function switchView(viewName) {
+  document.querySelectorAll(".nav-item").forEach((b) => b.classList.toggle("active", b.dataset.view === viewName));
+  document.querySelectorAll(".view").forEach((v) => (v.hidden = true));
+  const target = document.getElementById("view-" + viewName);
+  if (target) target.hidden = false;
+}
+
 document.querySelectorAll(".nav-item").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll(".nav-item").forEach((b) => b.classList.remove("active"));
-    btn.classList.add("active");
-    document.querySelectorAll(".view").forEach((v) => (v.hidden = true));
-    document.getElementById("view-" + btn.dataset.view).hidden = false;
-  });
+  btn.addEventListener("click", () => switchView(btn.dataset.view));
 });
 
 // ============================================================
@@ -762,6 +764,7 @@ document.addEventListener("click", (e) => {
     document.getElementById("cliente-notas").value = c.notes || "";
     document.getElementById("cliente-submit-btn").textContent = "Guardar cambios";
     document.getElementById("cliente-cancel-btn").hidden = false;
+    switchView("clientes");
     document.getElementById("form-cliente").scrollIntoView({ behavior: "smooth", block: "center" });
   } else if (kind === "income") {
     const i = state.income.find((x) => x.id === id);
@@ -782,6 +785,7 @@ document.addEventListener("click", (e) => {
     document.getElementById("ingreso-eur-tc").value = "";
     document.getElementById("ingreso-submit-btn").textContent = "Guardar cambios";
     document.getElementById("ingreso-cancel-btn").hidden = false;
+    switchView("ingresos");
     document.getElementById("form-ingreso").scrollIntoView({ behavior: "smooth", block: "center" });
   } else if (kind === "expenses") {
     const g = state.expenses.find((x) => x.id === id);
@@ -800,6 +804,7 @@ document.addEventListener("click", (e) => {
     document.getElementById("gasto-fecha-factura").value = g.invoice_date || "";
     document.getElementById("gasto-submit-btn").textContent = "Guardar cambios";
     document.getElementById("gasto-cancel-btn").hidden = false;
+    switchView("gastos");
     document.getElementById("form-gasto").scrollIntoView({ behavior: "smooth", block: "center" });
   } else if (kind === "tasks") {
     const t = state.tasks.find((x) => x.id === id);
@@ -813,6 +818,7 @@ document.addEventListener("click", (e) => {
     document.getElementById("tarea-fecha").value = t.due_date || "";
     document.getElementById("tarea-submit-btn").textContent = "Guardar cambios";
     document.getElementById("tarea-cancel-btn").hidden = false;
+    switchView("tareas");
     document.getElementById("form-tarea").scrollIntoView({ behavior: "smooth", block: "center" });
   } else if (kind === "savings_funds") {
     const f = state.savingsFunds.find((x) => x.id === id);
@@ -822,6 +828,7 @@ document.addEventListener("click", (e) => {
     document.getElementById("fondo-meta").value = f.goal_amount || "";
     document.getElementById("fondo-submit-btn").textContent = "Guardar cambios";
     document.getElementById("fondo-cancel-btn").hidden = false;
+    switchView("ahorro");
     document.getElementById("form-fondo").scrollIntoView({ behavior: "smooth", block: "center" });
   } else if (kind === "savings_moves") {
     const m = state.savingsMoves.find((x) => x.id === id);
@@ -834,6 +841,7 @@ document.addEventListener("click", (e) => {
     document.getElementById("movimiento-nota").value = m.note || "";
     document.getElementById("movimiento-submit-btn").textContent = "Guardar cambios";
     document.getElementById("movimiento-cancel-btn").hidden = false;
+    switchView("ahorro");
     document.getElementById("form-movimiento").scrollIntoView({ behavior: "smooth", block: "center" });
   } else if (kind === "credit_payments") {
     const p = state.creditPayments.find((x) => x.id === id);
@@ -845,6 +853,7 @@ document.addEventListener("click", (e) => {
     document.getElementById("pago-credito-nota").value = p.note || "";
     document.getElementById("pago-credito-submit-btn").textContent = "Guardar cambios";
     document.getElementById("pago-credito-cancel-btn").hidden = false;
+    switchView("credito");
     document.getElementById("form-pago-credito").scrollIntoView({ behavior: "smooth", block: "center" });
   }
 });
