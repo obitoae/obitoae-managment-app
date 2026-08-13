@@ -1,5 +1,5 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, PRIVACY_PASSWORD } from "./config.js";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -18,7 +18,38 @@ function formatMes(mesKey) {
   return `${MESES_ES[parseInt(mes, 10) - 1]} ${anio}`;
 }
 
-let state = { clients: [], income: [], expenses: [], tasks: [] };
+// ---- Cortes de tarjeta de crédito (cierran el día 26 de cada mes) ----
+function cortePeriodKey(dateStr) {
+  if (!dateStr) return null;
+  const [y, m, d] = dateStr.split("-").map(Number);
+  let year = y;
+  let month = m; // 1-12
+  if (d > 26) {
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+  }
+  return `${year}-${String(month).padStart(2, "0")}`;
+}
+
+function currentCorteKey() {
+  return cortePeriodKey(todayISO());
+}
+
+function corteRangeLabel(periodKey) {
+  const [y, m] = periodKey.split("-").map(Number);
+  let prevMonth = m - 1;
+  let prevYear = y;
+  if (prevMonth < 1) {
+    prevMonth = 12;
+    prevYear -= 1;
+  }
+  return `Corte del 27 de ${MESES_ES[prevMonth - 1]} al 26 de ${MESES_ES[m - 1]} ${y}`;
+}
+
+let state = { clients: [], income: [], expenses: [], tasks: [], savingsFunds: [], savingsMoves: [], creditPayments: [] };
 
 // ============================================================
 // AUTH
@@ -83,16 +114,30 @@ document.querySelectorAll(".nav-item").forEach((btn) => {
 // CARGA DE DATOS
 // ============================================================
 async function loadAll() {
-  const [{ data: clients }, { data: income }, { data: expenses }, { data: tasks }] = await Promise.all([
+  const [
+    { data: clients },
+    { data: income },
+    { data: expenses },
+    { data: tasks },
+    { data: savingsFunds },
+    { data: savingsMoves },
+    { data: creditPayments },
+  ] = await Promise.all([
     supabase.from("clients").select("*").order("name"),
     supabase.from("income").select("*").order("date", { ascending: false }),
     supabase.from("expenses").select("*").order("date", { ascending: false }),
     supabase.from("tasks").select("*").order("due_date", { ascending: true, nullsFirst: false }),
+    supabase.from("savings_funds").select("*").order("name"),
+    supabase.from("savings_moves").select("*").order("date", { ascending: false }),
+    supabase.from("credit_payments").select("*").order("date", { ascending: false }),
   ]);
   state.clients = clients || [];
   state.income = income || [];
   state.expenses = expenses || [];
   state.tasks = tasks || [];
+  state.savingsFunds = savingsFunds || [];
+  state.savingsMoves = savingsMoves || [];
+  state.creditPayments = creditPayments || [];
 }
 
 function clientName(id) {
@@ -106,6 +151,8 @@ function renderAll() {
   renderTareasView();
   renderIngresosView();
   renderGastosView();
+  renderCreditoView();
+  renderAhorroView();
   renderHistoricoDetalle();
   renderDashboard();
 }
@@ -289,17 +336,18 @@ function renderIngresosView() {
       <td>${clientName(i.client_id)}</td>
       <td>${i.service}</td>
       <td>${i.type}</td>
-      <td>${money(i.amount)}</td>
-      <td>${money(i.iva)}</td>
+      <td class="ing-amount">${money(i.amount)}</td>
+      <td class="ing-amount">${money(i.iva)}</td>
       <td>${i.payment_method || ""}</td>
       <td>${i.is_recurring ? "Sí" : "No"}</td>
+      <td><span class="invoiced-tag ${i.invoiced ? "si" : "no"}">${i.invoiced ? `Sí${i.invoice_folio ? " · " + i.invoice_folio : ""}` : "No"}</span></td>
       <td>
         <button class="btn-edit" data-id="${i.id}" data-kind="income">Editar</button>
         <button class="btn-delete" data-id="${i.id}" data-kind="income">Eliminar</button>
       </td>
     </tr>`
       )
-      .join("") || `<tr><td colspan="9" class="muted">Aún no registras ingresos este mes.</td></tr>`;
+      .join("") || `<tr><td colspan="10" class="muted">Aún no registras ingresos este mes.</td></tr>`;
 }
 
 function resetIngresoForm() {
@@ -322,6 +370,9 @@ document.getElementById("form-ingreso").addEventListener("submit", async (e) => 
     payment_method: document.getElementById("ingreso-metodo").value,
     is_recurring: document.getElementById("ingreso-recurrente").checked,
     date: document.getElementById("ingreso-fecha").value,
+    invoiced: document.getElementById("ingreso-facturado").checked,
+    invoice_folio: document.getElementById("ingreso-folio").value.trim() || null,
+    invoice_date: document.getElementById("ingreso-fecha-factura").value || null,
   };
   if (id) {
     await supabase.from("income").update(row).eq("id", id);
@@ -384,13 +435,14 @@ function renderGastosView() {
       <td>${money(g.amount)}</td>
       <td>${g.recurrence}</td>
       <td>${g.payment_method || ""}</td>
+      <td><span class="invoiced-tag ${g.invoiced ? "si" : "no"}">${g.invoiced ? `Sí${g.invoice_folio ? " · " + g.invoice_folio : ""}` : "No"}</span></td>
       <td>
         <button class="btn-edit" data-id="${g.id}" data-kind="expenses">Editar</button>
         <button class="btn-delete" data-id="${g.id}" data-kind="expenses">Eliminar</button>
       </td>
     </tr>`
     )
-    .join("") || `<tr><td colspan="8" class="muted">Aún no registras gastos este mes.</td></tr>`;
+    .join("") || `<tr><td colspan="9" class="muted">Aún no registras gastos este mes.</td></tr>`;
 }
 
 function resetGastoForm() {
@@ -414,6 +466,9 @@ document.getElementById("form-gasto").addEventListener("submit", async (e) => {
     recurrence: document.getElementById("gasto-recurrencia").value,
     payment_method: document.getElementById("gasto-metodo").value,
     date: document.getElementById("gasto-fecha").value,
+    invoiced: document.getElementById("gasto-facturado").checked,
+    invoice_folio: document.getElementById("gasto-folio").value.trim() || null,
+    invoice_date: document.getElementById("gasto-fecha-factura").value || null,
   };
   if (id) {
     await supabase.from("expenses").update(row).eq("id", id);
@@ -426,6 +481,271 @@ document.getElementById("form-gasto").addEventListener("submit", async (e) => {
 });
 
 document.getElementById("gasto-cancel-btn").addEventListener("click", resetGastoForm);
+
+// ============================================================
+// TARJETA DE CRÉDITO (cortes + pagos quincenales)
+// ============================================================
+document.getElementById("pago-credito-fecha").value = todayISO();
+
+function gastosCreditoDelCorte(periodKey) {
+  return state.expenses.filter(
+    (g) => g.payment_method === "Tarjeta de crédito" && cortePeriodKey(g.date) === periodKey
+  );
+}
+
+function totalCorte(periodKey) {
+  return gastosCreditoDelCorte(periodKey).reduce((s, g) => s + Number(g.amount || 0), 0);
+}
+
+function pagadoCorte(periodKey) {
+  return state.creditPayments
+    .filter((p) => p.period_key === periodKey)
+    .reduce((s, p) => s + Number(p.amount || 0), 0);
+}
+
+function allCortePeriods() {
+  const keys = new Set([currentCorteKey()]);
+  state.expenses.forEach((g) => {
+    if (g.payment_method === "Tarjeta de crédito" && g.date) keys.add(cortePeriodKey(g.date));
+  });
+  state.creditPayments.forEach((p) => keys.add(p.period_key));
+  return Array.from(keys).sort((a, b) => b.localeCompare(a));
+}
+
+function renderCreditoView() {
+  const periodos = allCortePeriods();
+  const actual = currentCorteKey();
+
+  const selPeriodo = document.getElementById("pago-credito-periodo");
+  const prevSel = selPeriodo.value;
+  selPeriodo.innerHTML = periodos.map((k) => `<option value="${k}">${corteRangeLabel(k)}</option>`).join("");
+  selPeriodo.value = prevSel && periodos.includes(prevSel) ? prevSel : actual;
+
+  const totalActual = totalCorte(actual);
+  const pagadoActual = pagadoCorte(actual);
+  const saldoActual = totalActual - pagadoActual;
+  document.getElementById("credito-corte-label").textContent = corteRangeLabel(actual);
+  document.getElementById("credito-corte-total").textContent = money(totalActual);
+  document.getElementById("credito-corte-pagado").textContent = money(pagadoActual);
+  document.getElementById("credito-corte-saldo").textContent = money(saldoActual);
+  document.getElementById("credito-corte-sugerido").textContent = money(totalActual / 2);
+
+  const gastosCorte = gastosCreditoDelCorte(actual)
+    .slice()
+    .sort((a, b) => b.date.localeCompare(a.date));
+  document.getElementById("tabla-credito-gastos").innerHTML =
+    gastosCorte
+      .map(
+        (g) => `
+    <tr>
+      <td>${g.date}</td>
+      <td>${g.description}</td>
+      <td>${g.category}</td>
+      <td>${money(g.amount)}</td>
+    </tr>`
+      )
+      .join("") || `<tr><td colspan="4" class="muted">Todavía no registras gastos a crédito en este corte.</td></tr>`;
+
+  document.getElementById("tabla-pagos-credito").innerHTML =
+    state.creditPayments
+      .slice()
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .map(
+        (p) => `
+    <tr>
+      <td>${p.date}</td>
+      <td>${corteRangeLabel(p.period_key)}</td>
+      <td>${money(p.amount)}</td>
+      <td>${p.note || ""}</td>
+      <td>
+        <button class="btn-edit" data-id="${p.id}" data-kind="credit_payments">Editar</button>
+        <button class="btn-delete" data-id="${p.id}" data-kind="credit_payments">Eliminar</button>
+      </td>
+    </tr>`
+      )
+      .join("") || `<tr><td colspan="5" class="muted">Todavía no registras pagos.</td></tr>`;
+
+  document.getElementById("tabla-historico-cortes").innerHTML =
+    periodos
+      .map((k) => {
+        const total = totalCorte(k);
+        const pagado = pagadoCorte(k);
+        const saldo = total - pagado;
+        const estado = saldo <= 0 ? "Liquidado" : k === actual ? "En curso" : "Pendiente";
+        return `
+    <tr>
+      <td>${corteRangeLabel(k)}</td>
+      <td>${money(total)}</td>
+      <td>${money(pagado)}</td>
+      <td class="${saldo > 0 ? "due-overdue" : ""}">${money(saldo)}</td>
+      <td>${estado}</td>
+    </tr>`;
+      })
+      .join("") || `<tr><td colspan="5" class="muted">Sin cortes todavía.</td></tr>`;
+}
+
+function resetPagoCreditoForm() {
+  document.getElementById("form-pago-credito").reset();
+  document.getElementById("pago-credito-id").value = "";
+  document.getElementById("pago-credito-fecha").value = todayISO();
+  document.getElementById("pago-credito-submit-btn").textContent = "Registrar pago";
+  document.getElementById("pago-credito-cancel-btn").hidden = true;
+}
+
+document.getElementById("form-pago-credito").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = document.getElementById("pago-credito-id").value;
+  const row = {
+    period_key: document.getElementById("pago-credito-periodo").value,
+    amount: parseFloat(document.getElementById("pago-credito-monto").value) || 0,
+    date: document.getElementById("pago-credito-fecha").value,
+    note: document.getElementById("pago-credito-nota").value.trim(),
+  };
+  if (!row.period_key) return;
+  if (id) {
+    await supabase.from("credit_payments").update(row).eq("id", id);
+  } else {
+    await supabase.from("credit_payments").insert(row);
+  }
+  resetPagoCreditoForm();
+  await loadAll();
+  renderAll();
+});
+
+document.getElementById("pago-credito-cancel-btn").addEventListener("click", resetPagoCreditoForm);
+
+document.getElementById("btn-sugerido-credito").addEventListener("click", () => {
+  const periodo = document.getElementById("pago-credito-periodo").value;
+  const sugerido = totalCorte(periodo) / 2;
+  document.getElementById("pago-credito-monto").value = sugerido.toFixed(2);
+});
+
+// ============================================================
+// AHORRO (fondos + movimientos)
+// ============================================================
+document.getElementById("movimiento-fecha").value = todayISO();
+
+function fondoAcumulado(fondoId) {
+  return state.savingsMoves
+    .filter((m) => m.fund_id === fondoId)
+    .reduce((s, m) => s + (m.type === "Retiro" ? -Number(m.amount || 0) : Number(m.amount || 0)), 0);
+}
+
+function fondoName(id) {
+  const f = state.savingsFunds.find((x) => x.id === id);
+  return f ? f.name : "—";
+}
+
+function renderFondoSelect() {
+  document.getElementById("movimiento-fondo").innerHTML = state.savingsFunds
+    .map((f) => `<option value="${f.id}">${f.name}</option>`)
+    .join("");
+}
+
+function renderAhorroView() {
+  renderFondoSelect();
+
+  const tbodyFondos = document.getElementById("tabla-fondos");
+  tbodyFondos.innerHTML =
+    state.savingsFunds
+      .map((f) => {
+        const acumulado = fondoAcumulado(f.id);
+        let avance = "—";
+        if (f.goal_amount > 0) {
+          const pct = Math.max(0, Math.min(100, Math.round((acumulado / f.goal_amount) * 100)));
+          avance = `<div class="progress-bar"><div class="progress-bar-fill" style="width:${pct}%"></div></div><span class="muted">${pct}%</span>`;
+        }
+        return `
+    <tr>
+      <td>${f.name}</td>
+      <td>${f.goal_amount ? money(f.goal_amount) : "—"}</td>
+      <td>${money(acumulado)}</td>
+      <td>${avance}</td>
+      <td>
+        <button class="btn-edit" data-id="${f.id}" data-kind="savings_funds">Editar</button>
+        <button class="btn-delete" data-id="${f.id}" data-kind="savings_funds">Eliminar</button>
+      </td>
+    </tr>`;
+      })
+      .join("") || `<tr><td colspan="5" class="muted">Todavía no tienes fondos de ahorro.</td></tr>`;
+
+  const tbodyMovs = document.getElementById("tabla-movimientos");
+  tbodyMovs.innerHTML =
+    state.savingsMoves
+      .map(
+        (m) => `
+    <tr>
+      <td>${m.date}</td>
+      <td>${fondoName(m.fund_id)}</td>
+      <td>${m.type}</td>
+      <td>${money(m.amount)}</td>
+      <td>${m.note || ""}</td>
+      <td>
+        <button class="btn-edit" data-id="${m.id}" data-kind="savings_moves">Editar</button>
+        <button class="btn-delete" data-id="${m.id}" data-kind="savings_moves">Eliminar</button>
+      </td>
+    </tr>`
+      )
+      .join("") || `<tr><td colspan="6" class="muted">Todavía no registras movimientos.</td></tr>`;
+}
+
+function resetFondoForm() {
+  document.getElementById("form-fondo").reset();
+  document.getElementById("fondo-id").value = "";
+  document.getElementById("fondo-submit-btn").textContent = "Agregar fondo";
+  document.getElementById("fondo-cancel-btn").hidden = true;
+}
+
+document.getElementById("form-fondo").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = document.getElementById("fondo-id").value;
+  const row = {
+    name: document.getElementById("fondo-nombre").value.trim(),
+    goal_amount: parseFloat(document.getElementById("fondo-meta").value) || null,
+  };
+  if (!row.name) return;
+  if (id) {
+    await supabase.from("savings_funds").update(row).eq("id", id);
+  } else {
+    await supabase.from("savings_funds").insert(row);
+  }
+  resetFondoForm();
+  await loadAll();
+  renderAll();
+});
+
+document.getElementById("fondo-cancel-btn").addEventListener("click", resetFondoForm);
+
+function resetMovimientoForm() {
+  document.getElementById("form-movimiento").reset();
+  document.getElementById("movimiento-id").value = "";
+  document.getElementById("movimiento-fecha").value = todayISO();
+  document.getElementById("movimiento-submit-btn").textContent = "Registrar movimiento";
+  document.getElementById("movimiento-cancel-btn").hidden = true;
+}
+
+document.getElementById("form-movimiento").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = document.getElementById("movimiento-id").value;
+  const row = {
+    fund_id: document.getElementById("movimiento-fondo").value,
+    type: document.getElementById("movimiento-tipo").value,
+    amount: parseFloat(document.getElementById("movimiento-monto").value) || 0,
+    date: document.getElementById("movimiento-fecha").value,
+    note: document.getElementById("movimiento-nota").value.trim(),
+  };
+  if (!row.fund_id) return;
+  if (id) {
+    await supabase.from("savings_moves").update(row).eq("id", id);
+  } else {
+    await supabase.from("savings_moves").insert(row);
+  }
+  resetMovimientoForm();
+  await loadAll();
+  renderAll();
+});
+
+document.getElementById("movimiento-cancel-btn").addEventListener("click", resetMovimientoForm);
 
 // ============================================================
 // EDITAR (delegado, carga el registro en su formulario)
@@ -455,6 +775,9 @@ document.addEventListener("click", (e) => {
     document.getElementById("ingreso-metodo").value = i.payment_method;
     document.getElementById("ingreso-fecha").value = i.date;
     document.getElementById("ingreso-recurrente").checked = i.is_recurring;
+    document.getElementById("ingreso-facturado").checked = !!i.invoiced;
+    document.getElementById("ingreso-folio").value = i.invoice_folio || "";
+    document.getElementById("ingreso-fecha-factura").value = i.invoice_date || "";
     document.getElementById("ingreso-eur-monto").value = "";
     document.getElementById("ingreso-eur-tc").value = "";
     document.getElementById("ingreso-submit-btn").textContent = "Guardar cambios";
@@ -472,6 +795,9 @@ document.addEventListener("click", (e) => {
     document.getElementById("gasto-recurrencia").value = g.recurrence;
     document.getElementById("gasto-metodo").value = g.payment_method;
     document.getElementById("gasto-fecha").value = g.date;
+    document.getElementById("gasto-facturado").checked = !!g.invoiced;
+    document.getElementById("gasto-folio").value = g.invoice_folio || "";
+    document.getElementById("gasto-fecha-factura").value = g.invoice_date || "";
     document.getElementById("gasto-submit-btn").textContent = "Guardar cambios";
     document.getElementById("gasto-cancel-btn").hidden = false;
     document.getElementById("form-gasto").scrollIntoView({ behavior: "smooth", block: "center" });
@@ -488,6 +814,38 @@ document.addEventListener("click", (e) => {
     document.getElementById("tarea-submit-btn").textContent = "Guardar cambios";
     document.getElementById("tarea-cancel-btn").hidden = false;
     document.getElementById("form-tarea").scrollIntoView({ behavior: "smooth", block: "center" });
+  } else if (kind === "savings_funds") {
+    const f = state.savingsFunds.find((x) => x.id === id);
+    if (!f) return;
+    document.getElementById("fondo-id").value = f.id;
+    document.getElementById("fondo-nombre").value = f.name;
+    document.getElementById("fondo-meta").value = f.goal_amount || "";
+    document.getElementById("fondo-submit-btn").textContent = "Guardar cambios";
+    document.getElementById("fondo-cancel-btn").hidden = false;
+    document.getElementById("form-fondo").scrollIntoView({ behavior: "smooth", block: "center" });
+  } else if (kind === "savings_moves") {
+    const m = state.savingsMoves.find((x) => x.id === id);
+    if (!m) return;
+    document.getElementById("movimiento-id").value = m.id;
+    document.getElementById("movimiento-fondo").value = m.fund_id;
+    document.getElementById("movimiento-tipo").value = m.type;
+    document.getElementById("movimiento-monto").value = m.amount;
+    document.getElementById("movimiento-fecha").value = m.date;
+    document.getElementById("movimiento-nota").value = m.note || "";
+    document.getElementById("movimiento-submit-btn").textContent = "Guardar cambios";
+    document.getElementById("movimiento-cancel-btn").hidden = false;
+    document.getElementById("form-movimiento").scrollIntoView({ behavior: "smooth", block: "center" });
+  } else if (kind === "credit_payments") {
+    const p = state.creditPayments.find((x) => x.id === id);
+    if (!p) return;
+    document.getElementById("pago-credito-id").value = p.id;
+    document.getElementById("pago-credito-periodo").value = p.period_key;
+    document.getElementById("pago-credito-monto").value = p.amount;
+    document.getElementById("pago-credito-fecha").value = p.date;
+    document.getElementById("pago-credito-nota").value = p.note || "";
+    document.getElementById("pago-credito-submit-btn").textContent = "Guardar cambios";
+    document.getElementById("pago-credito-cancel-btn").hidden = false;
+    document.getElementById("form-pago-credito").scrollIntoView({ behavior: "smooth", block: "center" });
   }
 });
 
@@ -522,8 +880,8 @@ function renderHistoricoDetalle() {
       <td>${clientName(i.client_id)}</td>
       <td>${i.service}</td>
       <td>${i.type}</td>
-      <td>${money(i.amount)}</td>
-      <td>${money(i.iva)}</td>
+      <td class="ing-amount">${money(i.amount)}</td>
+      <td class="ing-amount">${money(i.iva)}</td>
     </tr>`
       )
       .join("") || `<tr><td colspan="6" class="muted">Todavía no hay meses anteriores registrados.</td></tr>`;
@@ -566,6 +924,10 @@ function renderDashboard() {
   document.getElementById("kpi-utilidad").textContent = money(totalIngresos - totalGastos);
   document.getElementById("kpi-clientes").textContent = state.clients.filter((c) => c.active).length;
   document.getElementById("kpi-tareas").textContent = state.tasks.filter((t) => t.status !== "Hecho").length;
+  const ahorroTotal = state.savingsFunds.reduce((s, f) => s + fondoAcumulado(f.id), 0);
+  document.getElementById("kpi-ahorro").textContent = money(ahorroTotal);
+  const saldoCreditoActual = totalCorte(currentCorteKey()) - pagadoCorte(currentCorteKey());
+  document.getElementById("kpi-credito").textContent = money(saldoCreditoActual);
 
   // ---- Concentración de ingresos por cliente (todo el histórico, más representativo que solo el mes) ----
   const porCliente = {};
@@ -636,9 +998,9 @@ function renderDashboard() {
     .filter((g) => g.recurrence === "Mensual")
     .reduce((s, g) => s + Number(g.amount || 0), 0);
   document.getElementById("proyeccion-recurrente").innerHTML = `
-    <div class="stat-row"><span>Ingreso recurrente / mes</span><span class="amount positive">${money(ingresoRecurrente)}</span></div>
+    <div class="stat-row"><span>Ingreso recurrente / mes</span><span class="amount positive ing-amount">${money(ingresoRecurrente)}</span></div>
     <div class="stat-row"><span>Gasto recurrente / mes</span><span class="amount negative">${money(gastoRecurrente)}</span></div>
-    <div class="stat-row"><span>Neto recurrente / mes</span><span class="amount">${money(ingresoRecurrente - gastoRecurrente)}</span></div>
+    <div class="stat-row"><span>Neto recurrente / mes</span><span class="amount ing-amount">${money(ingresoRecurrente - gastoRecurrente)}</span></div>
   `;
 
   // ---- Utilidad por cliente ----
@@ -697,13 +1059,45 @@ function renderDashboard() {
         return `
     <tr>
       <td>${formatMes(mes)}</td>
-      <td>${money(ingresos)}</td>
+      <td class="ing-amount">${money(ingresos)}</td>
       <td>${money(gastos)}</td>
-      <td class="${utilidad >= 0 ? "" : "due-overdue"}">${money(utilidad)}</td>
+      <td class="${utilidad >= 0 ? "" : "due-overdue"} ing-amount">${money(utilidad)}</td>
     </tr>`;
       })
       .join("") || `<tr><td colspan="4" class="muted">Aún no hay movimientos registrados.</td></tr>`;
 }
+
+// ============================================================
+// PRIVACIDAD (ocultar montos de ingresos con blur + contraseña)
+// ============================================================
+const PRIVACY_KEY = "obitoae_privacy_hidden";
+const privacyBtn = document.getElementById("btn-privacy-toggle");
+
+function isPrivacyOn() {
+  return localStorage.getItem(PRIVACY_KEY) === "1";
+}
+
+function setPrivacy(on) {
+  appEl.classList.toggle("privacy-on", on);
+  localStorage.setItem(PRIVACY_KEY, on ? "1" : "0");
+  privacyBtn.textContent = on ? "🙈 Ingresos ocultos" : "🙈 Ocultar ingresos";
+}
+
+privacyBtn.addEventListener("click", () => {
+  if (isPrivacyOn()) {
+    const pass = prompt("Contraseña para ver los ingresos:");
+    if (pass === null) return;
+    if (pass !== PRIVACY_PASSWORD) {
+      alert("Contraseña incorrecta.");
+      return;
+    }
+    setPrivacy(false);
+  } else {
+    setPrivacy(true);
+  }
+});
+
+setPrivacy(isPrivacyOn());
 
 // ============================================================
 // INICIO

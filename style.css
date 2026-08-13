@@ -52,6 +52,7 @@ input, select, button { font-family: var(--font-body); }
   font-family: var(--font-display); letter-spacing: 0.03em;
 }
 .sidebar-nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.sidebar-footer { display: flex; flex-direction: column; gap: 8px; }
 .nav-item {
   background: none; border: none; color: #cfd2c4; text-align: left; padding: 10px 12px;
   border-radius: 6px; cursor: pointer; font-size: 14px; font-family: var(--font-body);
@@ -155,6 +156,23 @@ input, select, button { font-family: var(--font-body); }
   cursor: pointer; color: var(--text); font-family: var(--font-body);
 }
 .kanban-move-btn:hover { background: var(--green-bg); border-color: var(--green); }
+
+/* ---------------- Facturación (badge Sí/No) ---------------- */
+.invoiced-tag { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold; }
+.invoiced-tag.si { background: var(--green-bg); color: #5c7a1f; }
+.invoiced-tag.no { background: #eef0e9; color: var(--muted); }
+
+/* ---------------- Ahorro: barra de avance ---------------- */
+.progress-bar { background: var(--border); border-radius: 6px; height: 8px; width: 100%; overflow: hidden; }
+.progress-bar-fill { background: var(--green); height: 100%; }
+
+/* ---------------- Privacidad: ocultar montos de ingresos ---------------- */
+.app.privacy-on .ing-amount {
+  filter: blur(6px);
+  user-select: none;
+  transition: filter 0.15s;
+}
+.app.privacy-on .ing-amount:hover { filter: blur(3px); }
 
 /* ---------------- Conversor EUR -> MXN ---------------- */
 .eur-helper { font-size: 13px; }

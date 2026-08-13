@@ -38,9 +38,14 @@
       <button class="nav-item" data-view="tareas">Tareas</button>
       <button class="nav-item" data-view="ingresos">Ingresos</button>
       <button class="nav-item" data-view="gastos">Gastos</button>
+      <button class="nav-item" data-view="credito">Tarjeta de crédito</button>
+      <button class="nav-item" data-view="ahorro">Ahorro</button>
       <button class="nav-item" data-view="historico">Histórico</button>
     </nav>
-    <button id="logout-btn" class="btn-logout">Cerrar sesión</button>
+    <div class="sidebar-footer">
+      <button id="btn-privacy-toggle" class="btn-logout btn-privacy">🙈 Ocultar ingresos</button>
+      <button id="logout-btn" class="btn-logout">Cerrar sesión</button>
+    </div>
   </aside>
 
   <main class="main">
@@ -55,7 +60,7 @@
       <div class="kpi-row">
         <div class="kpi-card">
           <div class="kpi-label">Ingresos del periodo</div>
-          <div class="kpi-value" id="kpi-ingresos">$0</div>
+          <div class="kpi-value ing-amount" id="kpi-ingresos">$0</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-label">Gastos del periodo</div>
@@ -72,6 +77,14 @@
         <div class="kpi-card">
           <div class="kpi-label">Tareas pendientes</div>
           <div class="kpi-value" id="kpi-tareas">0</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Ahorro total</div>
+          <div class="kpi-value" id="kpi-ahorro">$0</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Saldo tarjeta (corte actual)</div>
+          <div class="kpi-value" id="kpi-credito">$0</div>
         </div>
       </div>
 
@@ -213,6 +226,9 @@
           </div>
           <div><label>Fecha</label><input type="date" id="ingreso-fecha" required></div>
           <div class="checkbox-row"><label><input type="checkbox" id="ingreso-recurrente"> Es recurrente</label></div>
+          <div class="checkbox-row"><label><input type="checkbox" id="ingreso-facturado"> Ya emití factura</label></div>
+          <div><label>Folio de factura (opcional)</label><input type="text" id="ingreso-folio"></div>
+          <div><label>Fecha de factura (opcional)</label><input type="date" id="ingreso-fecha-factura"></div>
           <div class="form-actions">
             <details class="eur-helper">
               <summary>¿Cobraste en euros? Conviértelo a pesos aquí</summary>
@@ -237,7 +253,7 @@
       <div class="panel">
         <h3>Historial de ingresos (este mes)</h3>
         <table class="data-table">
-          <thead><tr><th>Fecha</th><th>Cliente</th><th>Servicio</th><th>Canal</th><th>Monto</th><th>IVA</th><th>Método</th><th>Recurrente</th><th></th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Cliente</th><th>Servicio</th><th>Canal</th><th>Monto</th><th>IVA</th><th>Método</th><th>Recurrente</th><th>Facturado</th><th></th></tr></thead>
           <tbody id="tabla-ingresos"></tbody>
         </table>
       </div>
@@ -272,10 +288,13 @@
           </div>
           <div><label>Método de pago</label>
             <select id="gasto-metodo">
-              <option>Transferencia</option><option>Efectivo</option><option>Tarjeta</option><option>Otro</option>
+              <option>Transferencia</option><option>Efectivo</option><option>Tarjeta de débito</option><option>Tarjeta de crédito</option><option>Otro</option>
             </select>
           </div>
           <div><label>Fecha</label><input type="date" id="gasto-fecha" required></div>
+          <div class="checkbox-row"><label><input type="checkbox" id="gasto-facturado"> Tengo factura de este gasto</label></div>
+          <div><label>Folio de factura (opcional)</label><input type="text" id="gasto-folio"></div>
+          <div><label>Fecha de factura (opcional)</label><input type="date" id="gasto-fecha-factura"></div>
           <div class="form-actions">
             <button type="submit" id="gasto-submit-btn" class="btn btn-primary">Registrar gasto</button>
             <button type="button" id="gasto-cancel-btn" class="btn-cancel-edit" hidden>Cancelar edición</button>
@@ -286,8 +305,140 @@
       <div class="panel">
         <h3>Historial de gastos (este mes)</h3>
         <table class="data-table">
-          <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Cliente</th><th>Monto</th><th>Recurrencia</th><th>Método</th><th></th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Cliente</th><th>Monto</th><th>Recurrencia</th><th>Método</th><th>Facturado</th><th></th></tr></thead>
           <tbody id="tabla-gastos"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ---------- TARJETA DE CRÉDITO ---------- -->
+    <section id="view-credito" class="view" hidden>
+      <header class="view-header">
+        <h2>Tarjeta de crédito</h2>
+        <p class="muted">Agrupa tus gastos con método "Tarjeta de crédito" por corte (del 27 al 26 de cada mes) y lleva el control de tus dos pagos quincenales.</p>
+      </header>
+
+      <div class="panel">
+        <h3 id="credito-corte-label">Corte actual</h3>
+        <div class="kpi-row" style="grid-template-columns: repeat(4, 1fr);">
+          <div class="kpi-card">
+            <div class="kpi-label">Total del corte</div>
+            <div class="kpi-value" id="credito-corte-total">$0</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Pagado</div>
+            <div class="kpi-value" id="credito-corte-pagado">$0</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Saldo pendiente</div>
+            <div class="kpi-value" id="credito-corte-saldo">$0</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Sugerido por quincena (50%)</div>
+            <div class="kpi-value" id="credito-corte-sugerido">$0</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Gastos a crédito de este corte</h3>
+        <table class="data-table">
+          <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th></tr></thead>
+          <tbody id="tabla-credito-gastos"></tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h3>Registrar pago quincenal</h3>
+        <form id="form-pago-credito" class="form-grid">
+          <input type="hidden" id="pago-credito-id">
+          <div><label>Corte</label><select id="pago-credito-periodo" required></select></div>
+          <div>
+            <label>Monto</label>
+            <input type="number" step="0.01" id="pago-credito-monto" required>
+          </div>
+          <div><label>Fecha</label><input type="date" id="pago-credito-fecha" required></div>
+          <div><label>Nota (opcional)</label><input type="text" id="pago-credito-nota"></div>
+          <div class="form-actions">
+            <button type="button" id="btn-sugerido-credito" class="btn-edit">Usar 50% sugerido de este corte</button>
+          </div>
+          <div class="form-actions">
+            <button type="submit" id="pago-credito-submit-btn" class="btn btn-primary">Registrar pago</button>
+            <button type="button" id="pago-credito-cancel-btn" class="btn-cancel-edit" hidden>Cancelar edición</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <h3>Pagos registrados</h3>
+        <table class="data-table">
+          <thead><tr><th>Fecha</th><th>Corte</th><th>Monto</th><th>Nota</th><th></th></tr></thead>
+          <tbody id="tabla-pagos-credito"></tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h3>Historial de cortes</h3>
+        <table class="data-table">
+          <thead><tr><th>Corte</th><th>Total gastado</th><th>Pagado</th><th>Saldo</th><th>Estado</th></tr></thead>
+          <tbody id="tabla-historico-cortes"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ---------- AHORRO ---------- -->
+    <section id="view-ahorro" class="view" hidden>
+      <header class="view-header">
+        <h2>Ahorro</h2>
+        <p class="muted">Crea uno o varios fondos y ve registrando depósitos y retiros.</p>
+      </header>
+
+      <div class="panel">
+        <h3>Nuevo fondo</h3>
+        <form id="form-fondo" class="form-grid">
+          <input type="hidden" id="fondo-id">
+          <div><label>Nombre</label><input type="text" id="fondo-nombre" placeholder="Ej. Fondo de emergencia" required></div>
+          <div><label>Meta (opcional)</label><input type="number" step="0.01" id="fondo-meta" placeholder="Ej. 50000"></div>
+          <div class="form-actions">
+            <button type="submit" id="fondo-submit-btn" class="btn btn-primary">Agregar fondo</button>
+            <button type="button" id="fondo-cancel-btn" class="btn-cancel-edit" hidden>Cancelar edición</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <h3>Tus fondos</h3>
+        <table class="data-table">
+          <thead><tr><th>Nombre</th><th>Meta</th><th>Acumulado</th><th>Avance</th><th></th></tr></thead>
+          <tbody id="tabla-fondos"></tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h3>Registrar movimiento</h3>
+        <form id="form-movimiento" class="form-grid">
+          <input type="hidden" id="movimiento-id">
+          <div><label>Fondo</label><select id="movimiento-fondo" required></select></div>
+          <div><label>Tipo</label>
+            <select id="movimiento-tipo">
+              <option>Depósito</option><option>Retiro</option>
+            </select>
+          </div>
+          <div><label>Monto</label><input type="number" step="0.01" id="movimiento-monto" required></div>
+          <div><label>Fecha</label><input type="date" id="movimiento-fecha" required></div>
+          <div><label>Nota (opcional)</label><input type="text" id="movimiento-nota"></div>
+          <div class="form-actions">
+            <button type="submit" id="movimiento-submit-btn" class="btn btn-primary">Registrar movimiento</button>
+            <button type="button" id="movimiento-cancel-btn" class="btn-cancel-edit" hidden>Cancelar edición</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <h3>Movimientos</h3>
+        <table class="data-table">
+          <thead><tr><th>Fecha</th><th>Fondo</th><th>Tipo</th><th>Monto</th><th>Nota</th><th></th></tr></thead>
+          <tbody id="tabla-movimientos"></tbody>
         </table>
       </div>
     </section>
