@@ -59,6 +59,21 @@ input, select, button { font-family: var(--font-body); }
 }
 .nav-item:hover { background: #2f2f29; }
 .nav-item.active { background: var(--green); color: var(--dark); font-weight: bold; }
+
+/* ---------------- Sidebar: carpetas (grupos con sub-items) ---------------- */
+.nav-group { display: flex; flex-direction: column; margin-top: 4px; }
+.nav-group-header {
+  background: none; border: none; text-align: left; padding: 8px 12px; margin-top: 4px;
+  border-radius: 6px; cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+  font-family: var(--font-body); font-size: 11px; font-weight: bold; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--green-soft);
+}
+.nav-group-header:hover { background: #2f2f29; }
+.nav-group-caret { font-size: 10px; transition: transform 0.15s ease; }
+.nav-group.collapsed .nav-group-caret { transform: rotate(-90deg); }
+.nav-group-items { display: flex; flex-direction: column; gap: 4px; }
+.nav-group.collapsed .nav-group-items { display: none; }
+.nav-subitem { padding-left: 24px; font-size: 13px; }
 .btn-logout {
   background: none; border: 1px solid #43433c; color: #b7bbaa; padding: 8px; border-radius: 6px;
   cursor: pointer; font-size: 12px; font-family: var(--font-body);
