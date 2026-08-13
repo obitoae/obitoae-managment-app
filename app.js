@@ -106,25 +106,29 @@ function switchView(viewName) {
   document.querySelectorAll(".view").forEach((v) => (v.hidden = true));
   const target = document.getElementById("view-" + viewName);
   if (target) target.hidden = false;
+  // si el botón vive dentro de una carpeta (nav-group), la expandimos para que se vea activa
+  const activeBtn = document.querySelector(`.nav-item[data-view="${viewName}"]`);
+  const group = activeBtn && activeBtn.closest(".nav-group");
+  if (group) group.classList.remove("collapsed");
 }
 
 document.querySelectorAll(".nav-item").forEach((btn) => {
   btn.addEventListener("click", () => switchView(btn.dataset.view));
 });
 
+document.querySelectorAll(".nav-group-header").forEach((header) => {
+  header.addEventListener("click", () => {
+    header.closest(".nav-group").classList.toggle("collapsed");
+  });
+});
+
 // ============================================================
 // CARGA DE DATOS
 // ============================================================
+let loadErrorShown = false;
+
 async function loadAll() {
-  const [
-    { data: clients },
-    { data: income },
-    { data: expenses },
-    { data: tasks },
-    { data: savingsFunds },
-    { data: savingsMoves },
-    { data: creditPayments },
-  ] = await Promise.all([
+  const results = await Promise.all([
     supabase.from("clients").select("*").order("name"),
     supabase.from("income").select("*").order("date", { ascending: false }),
     supabase.from("expenses").select("*").order("date", { ascending: false }),
@@ -133,6 +137,20 @@ async function loadAll() {
     supabase.from("savings_moves").select("*").order("date", { ascending: false }),
     supabase.from("credit_payments").select("*").order("date", { ascending: false }),
   ]);
+  const tableNames = ["clients", "income", "expenses", "tasks", "savings_funds", "savings_moves", "credit_payments"];
+  const fallidas = [];
+  results.forEach(({ error }, i) => {
+    if (error) fallidas.push(`${tableNames[i]}: ${error.message}`);
+  });
+  if (fallidas.length && !loadErrorShown) {
+    loadErrorShown = true;
+    alert(
+      "No se pudo cargar información de estas tablas:\n\n" +
+        fallidas.join("\n") +
+        "\n\nCasi siempre significa que falta correr el SQL de esa parte en Supabase (archivo schema.sql, SQL Editor). El resto de la app sigue funcionando."
+    );
+  }
+  const [{ data: clients }, { data: income }, { data: expenses }, { data: tasks }, { data: savingsFunds }, { data: savingsMoves }, { data: creditPayments }] = results;
   state.clients = clients || [];
   state.income = income || [];
   state.expenses = expenses || [];
@@ -147,10 +165,28 @@ function clientName(id) {
   return c ? c.name : "—";
 }
 
+// ---- Guardar con manejo de errores: si Supabase rechaza el insert/update
+// (por ejemplo porque falta correr el SQL de esa tabla), avisa en vez de
+// fallar en silencio. Regresa true si se guardó bien, false si no. ----
+async function saveRow(table, id, row) {
+  const { error } = id
+    ? await supabase.from(table).update(row).eq("id", id)
+    : await supabase.from(table).insert(row);
+  if (error) {
+    alert(
+      `No se pudo guardar (tabla "${table}"): ${error.message}\n\n` +
+        `Esto casi siempre pasa porque falta correr el SQL de esa parte en Supabase (SQL Editor). Revisa el archivo schema.sql.`
+    );
+    return false;
+  }
+  return true;
+}
+
 function renderAll() {
   renderClientSelects();
   renderClientesView();
   renderTareasView();
+  renderTareasHistoricoView();
   renderIngresosView();
   renderGastosView();
   renderCreditoView();
@@ -202,11 +238,8 @@ document.getElementById("form-cliente").addEventListener("submit", async (e) => 
   const name = document.getElementById("cliente-nombre").value.trim();
   const notes = document.getElementById("cliente-notas").value.trim();
   if (!name) return;
-  if (id) {
-    await supabase.from("clients").update({ name, notes }).eq("id", id);
-  } else {
-    await supabase.from("clients").insert({ name, notes });
-  }
+  const ok = await saveRow("clients", id, { name, notes });
+  if (!ok) return;
   resetClienteForm();
   await loadAll();
   renderAll();
@@ -282,6 +315,30 @@ function renderTareasView() {
     hechoOrdenado.map(tareaCardHTML).join("") || `<p class="muted">Sin tareas aquí todavía.</p>`;
 }
 
+function renderTareasHistoricoView() {
+  const hechas = state.tasks
+    .filter((t) => t.status === "Hecho")
+    .slice()
+    .sort((a, b) => (b.due_date || "").localeCompare(a.due_date || ""));
+  document.getElementById("tabla-tareas-historico").innerHTML =
+    hechas
+      .map(
+        (t) => `
+    <tr>
+      <td>${t.title}</td>
+      <td>${t.category}</td>
+      <td>${t.client_id ? clientName(t.client_id) : "—"}</td>
+      <td><span class="priority-tag ${t.priority}">${t.priority}</span></td>
+      <td>${t.due_date || "—"}</td>
+      <td>
+        <button class="btn-edit" data-id="${t.id}" data-kind="tasks">Editar</button>
+        <button class="btn-delete" data-id="${t.id}" data-kind="tasks">Eliminar</button>
+      </td>
+    </tr>`
+      )
+      .join("") || `<tr><td colspan="6" class="muted">Todavía no tienes tareas completadas.</td></tr>`;
+}
+
 document.addEventListener("click", async (e) => {
   if (!e.target.matches(".kanban-move-btn")) return;
   const { id, to } = e.target.dataset;
@@ -309,11 +366,8 @@ document.getElementById("form-tarea").addEventListener("submit", async (e) => {
     due_date: document.getElementById("tarea-fecha").value || null,
   };
   if (!row.title) return;
-  if (id) {
-    await supabase.from("tasks").update(row).eq("id", id);
-  } else {
-    await supabase.from("tasks").insert(row);
-  }
+  const ok = await saveRow("tasks", id, row);
+  if (!ok) return;
   resetTareaForm();
   await loadAll();
   renderAll();
@@ -376,11 +430,8 @@ document.getElementById("form-ingreso").addEventListener("submit", async (e) => 
     invoice_folio: document.getElementById("ingreso-folio").value.trim() || null,
     invoice_date: document.getElementById("ingreso-fecha-factura").value || null,
   };
-  if (id) {
-    await supabase.from("income").update(row).eq("id", id);
-  } else {
-    await supabase.from("income").insert(row);
-  }
+  const ok = await saveRow("income", id, row);
+  if (!ok) return;
   resetIngresoForm();
   await loadAll();
   renderAll();
@@ -472,11 +523,8 @@ document.getElementById("form-gasto").addEventListener("submit", async (e) => {
     invoice_folio: document.getElementById("gasto-folio").value.trim() || null,
     invoice_date: document.getElementById("gasto-fecha-factura").value || null,
   };
-  if (id) {
-    await supabase.from("expenses").update(row).eq("id", id);
-  } else {
-    await supabase.from("expenses").insert(row);
-  }
+  const ok = await saveRow("expenses", id, row);
+  if (!ok) return;
   resetGastoForm();
   await loadAll();
   renderAll();
@@ -604,11 +652,8 @@ document.getElementById("form-pago-credito").addEventListener("submit", async (e
     note: document.getElementById("pago-credito-nota").value.trim(),
   };
   if (!row.period_key) return;
-  if (id) {
-    await supabase.from("credit_payments").update(row).eq("id", id);
-  } else {
-    await supabase.from("credit_payments").insert(row);
-  }
+  const ok = await saveRow("credit_payments", id, row);
+  if (!ok) return;
   resetPagoCreditoForm();
   await loadAll();
   renderAll();
@@ -706,11 +751,8 @@ document.getElementById("form-fondo").addEventListener("submit", async (e) => {
     goal_amount: parseFloat(document.getElementById("fondo-meta").value) || null,
   };
   if (!row.name) return;
-  if (id) {
-    await supabase.from("savings_funds").update(row).eq("id", id);
-  } else {
-    await supabase.from("savings_funds").insert(row);
-  }
+  const ok = await saveRow("savings_funds", id, row);
+  if (!ok) return;
   resetFondoForm();
   await loadAll();
   renderAll();
@@ -737,11 +779,8 @@ document.getElementById("form-movimiento").addEventListener("submit", async (e) 
     note: document.getElementById("movimiento-nota").value.trim(),
   };
   if (!row.fund_id) return;
-  if (id) {
-    await supabase.from("savings_moves").update(row).eq("id", id);
-  } else {
-    await supabase.from("savings_moves").insert(row);
-  }
+  const ok = await saveRow("savings_moves", id, row);
+  if (!ok) return;
   resetMovimientoForm();
   await loadAll();
   renderAll();
@@ -865,7 +904,11 @@ document.addEventListener("click", async (e) => {
   if (!e.target.matches(".btn-delete")) return;
   const { id, kind } = e.target.dataset;
   if (!confirm("¿Eliminar este registro?")) return;
-  await supabase.from(kind).delete().eq("id", id);
+  const { error } = await supabase.from(kind).delete().eq("id", id);
+  if (error) {
+    alert(`No se pudo eliminar (tabla "${kind}"): ${error.message}`);
+    return;
+  }
   await loadAll();
   renderAll();
 });
