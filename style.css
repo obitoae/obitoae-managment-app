@@ -117,6 +117,25 @@ input, select, button { font-family: var(--font-body); }
   background: none; border: none; color: var(--red); cursor: pointer; font-size: 12px; text-decoration: underline;
   font-family: var(--font-body);
 }
+.btn-edit {
+  background: none; border: none; color: #5c7a1f; cursor: pointer; font-size: 12px; text-decoration: underline;
+  font-family: var(--font-body); margin-right: 10px;
+}
+.btn-cancel-edit {
+  background: none; border: none; color: var(--red); cursor: pointer; font-size: 13px; text-decoration: underline;
+  font-family: var(--font-body); margin-left: 14px;
+}
+
+/* ---------------- Conversor EUR -> MXN ---------------- */
+.eur-helper { font-size: 13px; }
+.eur-helper summary { cursor: pointer; color: var(--muted); font-family: var(--font-body); }
+.eur-helper-row { display: flex; gap: 14px; margin-top: 10px; }
+.eur-helper-row > div { flex: 1; }
+.eur-helper-row label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; font-family: var(--font-body); }
+.eur-helper-row input {
+  width: 100%; padding: 9px 10px; border-radius: 6px; border: 1px solid var(--border); font-size: 14px; font-family: var(--font-body);
+}
+.eur-helper .muted { margin-top: 8px; }
 
 /* ---------------- Tables ---------------- */
 .data-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; font-family: var(--font-body); }

@@ -104,9 +104,11 @@
       <div class="panel">
         <h3>Nuevo cliente</h3>
         <form id="form-cliente" class="form-inline">
+          <input type="hidden" id="cliente-id">
           <input type="text" id="cliente-nombre" placeholder="Nombre del cliente" required>
           <input type="text" id="cliente-notas" placeholder="Notas (opcional)">
-          <button type="submit" class="btn btn-primary">Agregar</button>
+          <button type="submit" id="cliente-submit-btn" class="btn btn-primary">Agregar</button>
+          <button type="button" id="cliente-cancel-btn" class="btn-cancel-edit" hidden>Cancelar edición</button>
         </form>
       </div>
 
@@ -127,15 +129,16 @@
 
       <div class="panel">
         <form id="form-ingreso" class="form-grid">
+          <input type="hidden" id="ingreso-id">
           <div><label>Cliente</label><select id="ingreso-cliente" required></select></div>
           <div><label>Servicio</label><input type="text" id="ingreso-servicio" required></div>
           <div><label>Canal / Tipo</label>
             <select id="ingreso-tipo">
               <option>Freelance</option><option>Retainer</option><option>Proyecto</option>
-              <option>Salario</option><option>Comisión</option><option>Otro</option>
+              <option>Salario</option><option>Comisión</option><option>Video</option><option>Otro</option>
             </select>
           </div>
-          <div><label>Monto</label><input type="number" step="0.01" id="ingreso-monto" required></div>
+          <div><label>Monto (MXN)</label><input type="number" step="0.01" id="ingreso-monto" required></div>
           <div><label>IVA</label><input type="number" step="0.01" id="ingreso-iva" value="0"></div>
           <div><label>Método de pago</label>
             <select id="ingreso-metodo">
@@ -144,7 +147,20 @@
           </div>
           <div><label>Fecha</label><input type="date" id="ingreso-fecha" required></div>
           <div class="checkbox-row"><label><input type="checkbox" id="ingreso-recurrente"> Es recurrente</label></div>
-          <div class="form-actions"><button type="submit" class="btn btn-primary">Registrar ingreso</button></div>
+          <div class="form-actions">
+            <details class="eur-helper">
+              <summary>¿Cobraste en euros? Conviértelo a pesos aquí</summary>
+              <div class="eur-helper-row">
+                <div><label>Monto en euros</label><input type="number" step="0.01" id="ingreso-eur-monto" placeholder="Ej. 85"></div>
+                <div><label>Tipo de cambio (1 € = ? MXN)</label><input type="number" step="0.0001" id="ingreso-eur-tc" placeholder="Ej. 19.66"></div>
+              </div>
+              <p class="muted">Al llenar estos dos campos, el Monto de arriba se calcula solo. Revisa el tipo de cambio del día antes de capturar.</p>
+            </details>
+          </div>
+          <div class="form-actions">
+            <button type="submit" id="ingreso-submit-btn" class="btn btn-primary">Registrar ingreso</button>
+            <button type="button" id="ingreso-cancel-btn" class="btn-cancel-edit" hidden>Cancelar edición</button>
+          </div>
         </form>
       </div>
 
@@ -165,6 +181,7 @@
 
       <div class="panel">
         <form id="form-gasto" class="form-grid">
+          <input type="hidden" id="gasto-id">
           <div><label>Descripción</label><input type="text" id="gasto-descripcion" required></div>
           <div><label>Categoría</label>
             <select id="gasto-categoria">
@@ -188,7 +205,10 @@
             </select>
           </div>
           <div><label>Fecha</label><input type="date" id="gasto-fecha" required></div>
-          <div class="form-actions"><button type="submit" class="btn btn-primary">Registrar gasto</button></div>
+          <div class="form-actions">
+            <button type="submit" id="gasto-submit-btn" class="btn btn-primary">Registrar gasto</button>
+            <button type="button" id="gasto-cancel-btn" class="btn-cancel-edit" hidden>Cancelar edición</button>
+          </div>
         </form>
       </div>
 
