@@ -485,7 +485,7 @@ function renderGastosView() {
       <td>${g.description}</td>
       <td>${g.category}</td>
       <td>${g.client_id ? clientName(g.client_id) : "—"}</td>
-      <td class="ing-amount">${money(g.amount)}</td>
+      <td>${money(g.amount)}</td>
       <td>${g.recurrence}</td>
       <td>${g.payment_method || ""}</td>
       <td><span class="invoiced-tag ${g.invoiced ? "si" : "no"}">${g.invoiced ? `Sí${g.invoice_folio ? " · " + g.invoice_folio : ""}` : "No"}</span></td>
@@ -589,9 +589,9 @@ function renderCreditoView() {
         (g) => `
     <tr>
       <td>${g.date}</td>
-      <td class="ing-amount">${g.description}</td>
+      <td>${g.description}</td>
       <td>${g.category}</td>
-      <td class="ing-amount">${money(g.amount)}</td>
+      <td>${money(g.amount)}</td>
     </tr>`
       )
       .join("") || `<tr><td colspan="4" class="muted">Todavía no registras gastos a crédito en este corte.</td></tr>`;
@@ -605,7 +605,7 @@ function renderCreditoView() {
     <tr>
       <td>${p.date}</td>
       <td>${corteRangeLabel(p.period_key)}</td>
-      <td class="ing-amount">${money(p.amount)}</td>
+      <td>${money(p.amount)}</td>
       <td>${p.note || ""}</td>
       <td>
         <button class="btn-edit" data-id="${p.id}" data-kind="credit_payments">Editar</button>
@@ -625,9 +625,9 @@ function renderCreditoView() {
         return `
     <tr>
       <td>${corteRangeLabel(k)}</td>
-      <td class="ing-amount">${money(total)}</td>
-      <td class="ing-amount">${money(pagado)}</td>
-      <td class="${saldo > 0 ? "due-overdue" : ""} ing-amount">${money(saldo)}</td>
+      <td>${money(total)}</td>
+      <td>${money(pagado)}</td>
+      <td class="${saldo > 0 ? "due-overdue" : ""}">${money(saldo)}</td>
       <td>${estado}</td>
     </tr>`;
       })
@@ -705,8 +705,8 @@ function renderAhorroView() {
         return `
     <tr>
       <td>${f.name}</td>
-      <td class="ing-amount">${f.goal_amount ? money(f.goal_amount) : "—"}</td>
-      <td class="ing-amount">${money(acumulado)}</td>
+      <td>${f.goal_amount ? money(f.goal_amount) : "—"}</td>
+      <td>${money(acumulado)}</td>
       <td>${avance}</td>
       <td>
         <button class="btn-edit" data-id="${f.id}" data-kind="savings_funds">Editar</button>
@@ -725,7 +725,7 @@ function renderAhorroView() {
       <td>${m.date}</td>
       <td>${fondoName(m.fund_id)}</td>
       <td>${m.type}</td>
-      <td class="ing-amount">${money(m.amount)}</td>
+      <td>${money(m.amount)}</td>
       <td>${m.note || ""}</td>
       <td>
         <button class="btn-edit" data-id="${m.id}" data-kind="savings_moves">Editar</button>
@@ -955,7 +955,7 @@ function renderHistoricoDetalle() {
       <td>${g.description}</td>
       <td>${g.category}</td>
       <td>${g.client_id ? clientName(g.client_id) : "—"}</td>
-      <td class="ing-amount">${money(g.amount)}</td>
+      <td>${money(g.amount)}</td>
       <td>${g.recurrence}</td>
       <td>${g.payment_method || ""}</td>
       <td>
