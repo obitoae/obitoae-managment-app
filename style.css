@@ -265,38 +265,89 @@ input, select, button { font-family: var(--font-body); }
 /* ---------------- Views ---------------- */
 .view[hidden] { display: none; }
 
-@media (max-width: 900px) {
-  .app { flex-direction: column; }
-  .sidebar { width: 100%; flex-direction: column; align-items: stretch; padding: 12px 16px; }
-  .sidebar-brand { margin-bottom: 10px; text-align: center; }
-  .sidebar-nav { flex-direction: row; flex-wrap: wrap; flex: none; gap: 6px; overflow-x: visible; }
-  .nav-item { flex: 1 1 auto; text-align: center; padding: 8px 10px; font-size: 13px; }
-  .nav-group { flex: 1 1 100%; margin-top: 0; }
-  .nav-group-header { padding: 6px 10px; }
-  .nav-group-items { flex-direction: row; flex-wrap: wrap; gap: 6px; }
-  .nav-subitem { padding-left: 10px; flex: 1 1 auto; text-align: center; }
-  .sidebar-footer { flex-direction: row; margin-top: 10px; }
-  .sidebar-footer .btn-logout { flex: 1 1 auto; }
+/* ---------------- Barra superior móvil + menú deslizable ----------------
+   En escritorio no se muestran (display: none): el sidebar de siempre
+   queda fijo a la izquierda. En móvil (media query abajo) el sidebar se
+   convierte en un cajón (drawer) que entra desde la izquierda. */
+.mobile-topbar { display: none; }
+.sidebar-overlay { display: none; }
 
-  .main { padding: 16px; max-width: 100%; }
-  .view-header h2 { font-size: 22px; }
+@media (max-width: 900px) {
+  .app { display: block; }
+
+  .mobile-topbar {
+    display: flex; align-items: center; gap: 14px; position: sticky; top: 0; z-index: 30;
+    background: var(--dark); padding: 14px 16px; box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+  }
+  .btn-mobile-menu {
+    background: none; border: none; padding: 4px; display: flex; flex-direction: column; gap: 4px;
+    cursor: pointer; width: 26px;
+  }
+  .btn-mobile-menu span { display: block; height: 2px; width: 100%; background: var(--green); border-radius: 2px; }
+  .mobile-topbar-brand {
+    color: var(--green); font-family: var(--font-display); font-size: 19px; letter-spacing: 0.03em;
+  }
+
+  .sidebar-overlay[hidden] { display: none; }
+  .sidebar-overlay {
+    display: block; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 35;
+    animation: fade-in 0.15s ease;
+  }
+  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+  .sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0; z-index: 40; width: 78%; max-width: 300px;
+    box-shadow: 2px 0 24px rgba(0,0,0,0.35); transform: translateX(-100%);
+    transition: transform 0.25s ease; overflow-y: auto;
+  }
+  .sidebar.open { transform: translateX(0); }
+
+  .main { padding: 18px 16px 40px; max-width: 100%; }
+  .view-header h2 { font-size: 24px; }
+  .view-header { margin-bottom: 18px; }
 
   .kpi-row, .kpi-row-4 { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  .kpi-card { padding: 12px 14px; }
-  .kpi-value { font-size: 20px; }
+  .kpi-card { padding: 14px 16px; border-radius: 12px; }
+  .kpi-value { font-size: 21px; }
 
   .grid-2, .form-grid, .kanban-board { grid-template-columns: 1fr; }
+
+  .panel { padding: 16px; border-radius: 12px; }
 
   .chart-wrap { height: 220px; }
 
   .form-inline { flex-direction: column; }
   .eur-helper-row { flex-direction: column; gap: 10px; }
 
-  .data-table { min-width: 640px; font-size: 12px; }
-  .data-table th, .data-table td { padding: 8px; }
+  /* Tablas: en vez de una tabla angosta con scroll horizontal, cada fila se
+     convierte en una tarjeta con pares etiqueta/valor — mucho más ordenado
+     y fácil de leer en una pantalla angosta. La etiqueta sale del texto del
+     encabezado real (attr(data-label), puesto por JS al renderizar). */
+  .table-scroll { overflow-x: visible; }
+  .data-table { min-width: 0; border-spacing: 0 10px; margin-top: 0; }
+  .data-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+  .data-table, .data-table tbody, .data-table tr, .data-table td { display: block; width: 100%; }
+  .data-table tr {
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px;
+    padding: 4px 14px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .data-table td {
+    display: flex; justify-content: space-between; align-items: center; gap: 14px;
+    padding: 9px 0; border-bottom: 1px solid var(--border); text-align: right; font-size: 13px;
+  }
+  .data-table td:last-child { border-bottom: none; }
+  .data-table td:empty { display: none; }
+  .data-table td::before {
+    content: attr(data-label); font-weight: bold; color: var(--muted); font-size: 10px;
+    text-transform: uppercase; letter-spacing: 0.03em; text-align: left; flex-shrink: 0;
+  }
+  .data-table td[data-label=""]::before, .data-table td:not([data-label])::before { content: none; }
+  .data-table td[colspan] { display: block; text-align: center; }
+  .data-table td[colspan]::before { content: none; }
 }
 
 @media (max-width: 480px) {
   .kpi-row, .kpi-row-4 { grid-template-columns: 1fr; }
   .login-card { padding: 28px 22px; }
+  .mobile-topbar-brand { font-size: 17px; }
 }

@@ -232,6 +232,26 @@ document.querySelectorAll(".nav-group-header").forEach((header) => {
   });
 });
 
+// ---- Menú deslizable (móvil): el sidebar se abre/cierra como cajón ----
+const sidebarEl = document.querySelector(".sidebar");
+const sidebarOverlayEl = document.getElementById("sidebar-overlay");
+const btnMobileMenu = document.getElementById("btn-mobile-menu");
+
+function setSidebarOpen(open) {
+  sidebarEl.classList.toggle("open", open);
+  sidebarOverlayEl.hidden = !open;
+}
+
+if (btnMobileMenu) {
+  btnMobileMenu.addEventListener("click", () => setSidebarOpen(!sidebarEl.classList.contains("open")));
+}
+if (sidebarOverlayEl) {
+  sidebarOverlayEl.addEventListener("click", () => setSidebarOpen(false));
+}
+document.querySelectorAll(".nav-item").forEach((btn) => {
+  btn.addEventListener("click", () => setSidebarOpen(false));
+});
+
 // ============================================================
 // CARGA DE DATOS
 // ============================================================
@@ -323,6 +343,37 @@ function renderAll() {
   renderHistoricoDetalle();
   renderDashboard();
   renderInicioView();
+  applyMobileTableLabels();
+}
+
+// En móvil cada tabla se ve como una lista de tarjetas (una por fila) con
+// pares etiqueta/valor en vez de columnas angostas con scroll horizontal.
+// Esta función toma la etiqueta de cada tarjeta directamente del <th> real
+// de cada tabla, así que no hay que tocar cada render*View() por separado.
+function applyMobileTableLabels() {
+  document.querySelectorAll(".data-table").forEach((table) => {
+    const headers = Array.from(table.querySelectorAll("thead th")).map((th) => th.textContent.trim());
+    table.querySelectorAll("tbody tr").forEach((tr) => {
+      Array.from(tr.children).forEach((td, i) => {
+        if (td.hasAttribute("colspan")) return;
+        if (headers[i]) td.setAttribute("data-label", headers[i]);
+        // La etiqueta de arriba (::before, solo visible en móvil) vive en el
+        // propio <td>. Si el <td> trae la clase de privacidad "ing-amount",
+        // el filtro de blur del CSS difumina TODO el elemento — incluida la
+        // etiqueta generada por ::before, que quedaría ilegible. Por eso
+        // movemos esa clase a un <span> interno que envuelve solo el valor:
+        // así el blur tapa el dato, pero la etiqueta ("FECHA", "MONTO"...)
+        // se sigue viendo bien.
+        if (td.classList.contains("ing-amount")) {
+          td.classList.remove("ing-amount");
+          const inner = document.createElement("span");
+          inner.className = "ing-amount";
+          while (td.firstChild) inner.appendChild(td.firstChild);
+          td.appendChild(inner);
+        }
+      });
+    });
+  });
 }
 
 // ============================================================
@@ -427,7 +478,7 @@ function renderClientesView() {
     .map(
       (c) => `
     <tr>
-      <td>${c.name}</td>
+      <td class="ing-amount">${c.name}</td>
       <td>${c.notes || ""}</td>
       <td>${c.active ? "Sí" : "No"}</td>
       <td>
@@ -493,7 +544,7 @@ function tareaCardHTML(t) {
       <div class="kanban-card-meta">
         <span class="priority-tag ${t.priority}">${t.priority}</span>
         <span>${t.category}</span>
-        ${t.client_id ? `<span>${clientName(t.client_id)}</span>` : ""}
+        ${t.client_id ? `<span class="ing-amount">${clientName(t.client_id)}</span>` : ""}
         ${t.due_date ? `<span>${fechaTareaHTML(t)}</span>` : ""}
       </div>
       <div class="kanban-card-actions">
@@ -542,7 +593,7 @@ function renderTareasHistoricoView() {
     <tr>
       <td>${t.title}</td>
       <td>${t.category}</td>
-      <td>${t.client_id ? clientName(t.client_id) : "—"}</td>
+      <td class="ing-amount">${t.client_id ? clientName(t.client_id) : "—"}</td>
       <td><span class="priority-tag ${t.priority}">${t.priority}</span></td>
       <td>${t.due_date || "—"}</td>
       <td>
@@ -617,7 +668,7 @@ function renderIngresosView() {
         (i) => `
     <tr>
       <td>${i.date}</td>
-      <td>${clientName(i.client_id)}</td>
+      <td class="ing-amount">${clientName(i.client_id)}</td>
       <td>${i.service}</td>
       <td>${i.type}</td>
       <td class="ing-amount">${money(i.amount)}</td>
@@ -712,7 +763,7 @@ function renderGastosView() {
       <td>${g.date}</td>
       <td class="ing-amount">${g.description}</td>
       <td>${g.category}</td>
-      <td>${g.client_id ? clientName(g.client_id) : "—"}</td>
+      <td class="ing-amount">${g.client_id ? clientName(g.client_id) : "—"}</td>
       <td class="ing-amount">${money(g.amount)}</td>
       <td>${g.recurrence}</td>
       <td>${g.payment_method || ""}</td>
@@ -1175,7 +1226,7 @@ function renderHistoricoDetalle() {
         (i) => `
     <tr>
       <td>${i.date}</td>
-      <td>${clientName(i.client_id)}</td>
+      <td class="ing-amount">${clientName(i.client_id)}</td>
       <td>${i.service}</td>
       <td>${i.type}</td>
       <td class="ing-amount">${money(i.amount)}</td>
@@ -1200,7 +1251,7 @@ function renderHistoricoDetalle() {
       <td>${g.date}</td>
       <td>${g.description}</td>
       <td>${g.category}</td>
-      <td>${g.client_id ? clientName(g.client_id) : "—"}</td>
+      <td class="ing-amount">${g.client_id ? clientName(g.client_id) : "—"}</td>
       <td class="ing-amount">${money(g.amount)}</td>
       <td>${g.recurrence}</td>
       <td>${g.payment_method || ""}</td>
@@ -1326,7 +1377,7 @@ function renderDashboard() {
     utilidadPorCliente
       .map(
         (u) =>
-          `<div class="stat-row"><span>${u.name}</span><span class="amount ing-amount ${u.utilidad >= 0 ? "positive" : "negative"}">${money(u.utilidad)}</span></div>`
+          `<div class="stat-row"><span class="ing-amount">${u.name}</span><span class="amount ing-amount ${u.utilidad >= 0 ? "positive" : "negative"}">${money(u.utilidad)}</span></div>`
       )
       .join("") || `<p class="muted">Todavía no hay clientes con movimientos.</p>`;
 
@@ -1345,7 +1396,7 @@ function renderDashboard() {
     proximas
       .map(
         (t) =>
-          `<div class="stat-row"><span>${t.title}${t.client_id ? " — " + clientName(t.client_id) : ""}</span><span class="amount">${fechaTareaHTML(t)}</span></div>`
+          `<div class="stat-row"><span>${t.title}${t.client_id ? ` — <span class="ing-amount">${clientName(t.client_id)}</span>` : ""}</span><span class="amount">${fechaTareaHTML(t)}</span></div>`
       )
       .join("") || `<p class="muted">No tienes pendientes activos. 🎉</p>`;
 
