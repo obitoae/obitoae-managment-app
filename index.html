@@ -35,12 +35,29 @@
     <nav class="sidebar-nav">
       <button class="nav-item active" data-view="dashboard">Panel</button>
       <button class="nav-item" data-view="clientes">Clientes</button>
-      <button class="nav-item" data-view="tareas">Tareas</button>
-      <button class="nav-item" data-view="ingresos">Ingresos</button>
-      <button class="nav-item" data-view="gastos">Gastos</button>
-      <button class="nav-item" data-view="credito">Tarjeta de crédito</button>
-      <button class="nav-item" data-view="ahorro">Ahorro</button>
-      <button class="nav-item" data-view="historico">Histórico</button>
+
+      <div class="nav-group">
+        <button class="nav-group-header" data-group="tareas">
+          <span>Tareas</span><span class="nav-group-caret">▾</span>
+        </button>
+        <div class="nav-group-items">
+          <button class="nav-item nav-subitem" data-view="tareas">Tablero</button>
+          <button class="nav-item nav-subitem" data-view="tareas-historico">Histórico</button>
+        </div>
+      </div>
+
+      <div class="nav-group">
+        <button class="nav-group-header" data-group="finanzas">
+          <span>Finanzas</span><span class="nav-group-caret">▾</span>
+        </button>
+        <div class="nav-group-items">
+          <button class="nav-item nav-subitem" data-view="ingresos">Ingresos</button>
+          <button class="nav-item nav-subitem" data-view="gastos">Gastos</button>
+          <button class="nav-item nav-subitem" data-view="credito">Tarjeta de crédito</button>
+          <button class="nav-item nav-subitem" data-view="ahorro">Ahorro</button>
+          <button class="nav-item nav-subitem" data-view="historico">Histórico</button>
+        </div>
+      </div>
     </nav>
     <div class="sidebar-footer">
       <button id="btn-privacy-toggle" class="btn-logout btn-privacy">🙈 Ocultar ingresos</button>
@@ -196,6 +213,22 @@
             <div id="kanban-hecho"></div>
           </div>
         </div>
+        <p class="muted" style="margin-top: 12px;">Esta columna solo muestra las últimas 15 tareas hechas. El historial completo está en Tareas → Histórico.</p>
+      </div>
+    </section>
+
+    <!-- ---------- TAREAS: HISTÓRICO ---------- -->
+    <section id="view-tareas-historico" class="view" hidden>
+      <header class="view-header">
+        <h2>Histórico de tareas</h2>
+        <p class="muted">Todas las tareas marcadas como "Hecho", completo — el tablero solo muestra las últimas 15.</p>
+      </header>
+
+      <div class="panel">
+        <table class="data-table">
+          <thead><tr><th>Título</th><th>Categoría</th><th>Cliente</th><th>Prioridad</th><th>Fecha límite</th><th></th></tr></thead>
+          <tbody id="tabla-tareas-historico"></tbody>
+        </table>
       </div>
     </section>
 
