@@ -136,8 +136,6 @@ input, select, button { font-family: var(--font-body); }
   width: 100%; padding: 9px 10px; border-radius: 6px; border: 1px solid var(--border); font-size: 14px; font-family: var(--font-body);
 }
 .eur-helper .muted { margin-top: 8px; }
-.eur-helper-actions { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
-.eur-helper-actions .btn-edit { margin-right: 0; font-size: 13px; }
 
 /* ---------------- Tables ---------------- */
 .data-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; font-family: var(--font-body); }

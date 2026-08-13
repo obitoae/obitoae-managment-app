@@ -222,25 +222,6 @@ function actualizarMontoDesdeEuros() {
 document.getElementById("ingreso-eur-monto").addEventListener("input", actualizarMontoDesdeEuros);
 document.getElementById("ingreso-eur-tc").addEventListener("input", actualizarMontoDesdeEuros);
 
-document.getElementById("btn-tipo-cambio-hoy").addEventListener("click", async () => {
-  const statusEl = document.getElementById("tipo-cambio-status");
-  statusEl.textContent = "Consultando tipo de cambio...";
-  try {
-    const res = await fetch("https://api.frankfurter.dev/v1/latest?from=EUR&to=MXN");
-    const data = await res.json();
-    const rate = data && data.rates && data.rates.MXN;
-    if (rate) {
-      document.getElementById("ingreso-eur-tc").value = rate.toFixed(4);
-      statusEl.textContent = `Tipo de cambio de hoy (${data.date}): 1 € = ${rate.toFixed(2)} MXN`;
-      actualizarMontoDesdeEuros();
-    } else {
-      statusEl.textContent = "No se pudo obtener el tipo de cambio automático, ponlo manual.";
-    }
-  } catch (err) {
-    statusEl.textContent = "No se pudo obtener el tipo de cambio automático, ponlo manual.";
-  }
-});
-
 // ============================================================
 // GASTOS
 // ============================================================
