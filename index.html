@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Obitoae Managment</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ============== PANTALLA DE LOGIN ============== -->
+<div id="login-screen" class="login-screen">
+  <div class="login-card">
+    <h1 class="brand-title">Obitoae Managment</h1>
+    <p class="brand-subtitle">Clientes, ingresos y gastos en un solo lugar.</p>
+    <form id="login-form">
+      <label>Correo</label>
+      <input type="email" id="login-email" required autocomplete="username">
+      <label>Contraseña</label>
+      <input type="password" id="login-password" required autocomplete="current-password">
+      <button type="submit" class="btn btn-primary btn-block">Entrar</button>
+      <p id="login-error" class="error-text" hidden></p>
+    </form>
+  </div>
+</div>
+
+<!-- ============== APP ============== -->
+<div id="app" class="app" hidden>
+
+  <aside class="sidebar">
+    <div class="sidebar-brand">Obitoae<br>Managment</div>
+    <nav class="sidebar-nav">
+      <button class="nav-item active" data-view="dashboard">Panel</button>
+      <button class="nav-item" data-view="clientes">Clientes</button>
+      <button class="nav-item" data-view="ingresos">Ingresos</button>
+      <button class="nav-item" data-view="gastos">Gastos</button>
+    </nav>
+    <button id="logout-btn" class="btn-logout">Cerrar sesión</button>
+  </aside>
+
+  <main class="main">
+
+    <!-- ---------- PANEL / DASHBOARD ---------- -->
+    <section id="view-dashboard" class="view">
+      <header class="view-header">
+        <h2>Panel financiero</h2>
+        <p class="muted">Se actualiza solo con lo que registres en Ingresos y Gastos.</p>
+      </header>
+
+      <div class="kpi-row">
+        <div class="kpi-card">
+          <div class="kpi-label">Ingresos del periodo</div>
+          <div class="kpi-value" id="kpi-ingresos">$0</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Gastos del periodo</div>
+          <div class="kpi-value" id="kpi-gastos">$0</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Utilidad del periodo</div>
+          <div class="kpi-value" id="kpi-utilidad">$0</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Clientes activos</div>
+          <div class="kpi-value" id="kpi-clientes">0</div>
+        </div>
+      </div>
+
+      <div id="alert-concentracion" class="alert-box" hidden></div>
+
+      <div class="grid-2">
+        <div class="panel">
+          <h3>Concentración de ingresos por cliente</h3>
+          <canvas id="chart-concentracion"></canvas>
+        </div>
+        <div class="panel">
+          <h3>Rentabilidad por canal de origen</h3>
+          <canvas id="chart-canal"></canvas>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="panel">
+          <h3>Proyección recurrente (mensual)</h3>
+          <div id="proyeccion-recurrente" class="stat-list"></div>
+        </div>
+        <div class="panel">
+          <h3>Utilidad por cliente</h3>
+          <div id="utilidad-cliente" class="stat-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- CLIENTES ---------- -->
+    <section id="view-clientes" class="view" hidden>
+      <header class="view-header">
+        <h2>Clientes</h2>
+        <p class="muted">Da de alta a un cliente aquí antes de registrarle ingresos o gastos.</p>
+      </header>
+
+      <div class="panel">
+        <h3>Nuevo cliente</h3>
+        <form id="form-cliente" class="form-inline">
+          <input type="text" id="cliente-nombre" placeholder="Nombre del cliente" required>
+          <input type="text" id="cliente-notas" placeholder="Notas (opcional)">
+          <button type="submit" class="btn btn-primary">Agregar</button>
+        </form>
+      </div>
+
+      <div class="panel">
+        <h3>Tus clientes</h3>
+        <table class="data-table">
+          <thead><tr><th>Nombre</th><th>Notas</th><th>Activo</th><th></th></tr></thead>
+          <tbody id="tabla-clientes"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ---------- INGRESOS ---------- -->
+    <section id="view-ingresos" class="view" hidden>
+      <header class="view-header">
+        <h2>Registrar ingreso</h2>
+      </header>
+
+      <div class="panel">
+        <form id="form-ingreso" class="form-grid">
+          <div><label>Cliente</label><select id="ingreso-cliente" required></select></div>
+          <div><label>Servicio</label><input type="text" id="ingreso-servicio" required></div>
+          <div><label>Canal / Tipo</label>
+            <select id="ingreso-tipo">
+              <option>Freelance</option><option>Retainer</option><option>Proyecto</option>
+              <option>Salario</option><option>Comisión</option><option>Otro</option>
+            </select>
+          </div>
+          <div><label>Monto</label><input type="number" step="0.01" id="ingreso-monto" required></div>
+          <div><label>IVA</label><input type="number" step="0.01" id="ingreso-iva" value="0"></div>
+          <div><label>Método de pago</label>
+            <select id="ingreso-metodo">
+              <option>Transferencia</option><option>Efectivo</option><option>Tarjeta</option><option>Otro</option>
+            </select>
+          </div>
+          <div><label>Fecha</label><input type="date" id="ingreso-fecha" required></div>
+          <div class="checkbox-row"><label><input type="checkbox" id="ingreso-recurrente"> Es recurrente</label></div>
+          <div class="form-actions"><button type="submit" class="btn btn-primary">Registrar ingreso</button></div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <h3>Historial de ingresos</h3>
+        <table class="data-table">
+          <thead><tr><th>Fecha</th><th>Cliente</th><th>Servicio</th><th>Canal</th><th>Monto</th><th>IVA</th><th>Método</th><th>Recurrente</th><th></th></tr></thead>
+          <tbody id="tabla-ingresos"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ---------- GASTOS ---------- -->
+    <section id="view-gastos" class="view" hidden>
+      <header class="view-header">
+        <h2>Registrar gasto</h2>
+      </header>
+
+      <div class="panel">
+        <form id="form-gasto" class="form-grid">
+          <div><label>Descripción</label><input type="text" id="gasto-descripcion" required></div>
+          <div><label>Categoría</label>
+            <select id="gasto-categoria">
+              <option>Vivienda</option><option>Servicios</option><option>Suscripciones</option>
+              <option>Transporte</option><option>Salud</option><option>Seguros</option>
+              <option>Profesional</option><option>Compras</option><option>Deudas</option>
+              <option>Ahorro</option><option>Otro</option>
+            </select>
+          </div>
+          <div><label>Cliente relacionado (opcional)</label><select id="gasto-cliente"><option value="">— Ninguno —</option></select></div>
+          <div><label>Detalle</label><input type="text" id="gasto-detalle"></div>
+          <div><label>Monto</label><input type="number" step="0.01" id="gasto-monto" required></div>
+          <div><label>Recurrencia</label>
+            <select id="gasto-recurrencia">
+              <option>Único</option><option>Mensual</option><option>Semanal</option><option>Anual</option>
+            </select>
+          </div>
+          <div><label>Método de pago</label>
+            <select id="gasto-metodo">
+              <option>Transferencia</option><option>Efectivo</option><option>Tarjeta</option><option>Otro</option>
+            </select>
+          </div>
+          <div><label>Fecha</label><input type="date" id="gasto-fecha" required></div>
+          <div class="form-actions"><button type="submit" class="btn btn-primary">Registrar gasto</button></div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <h3>Historial de gastos</h3>
+        <table class="data-table">
+          <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Cliente</th><th>Monto</th><th>Recurrencia</th><th>Método</th><th></th></tr></thead>
+          <tbody id="tabla-gastos"></tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
