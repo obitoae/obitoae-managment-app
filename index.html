@@ -35,6 +35,7 @@
     <nav class="sidebar-nav">
       <button class="nav-item active" data-view="dashboard">Panel</button>
       <button class="nav-item" data-view="clientes">Clientes</button>
+      <button class="nav-item" data-view="tareas">Tareas</button>
       <button class="nav-item" data-view="ingresos">Ingresos</button>
       <button class="nav-item" data-view="gastos">Gastos</button>
     </nav>
@@ -67,6 +68,10 @@
           <div class="kpi-label">Clientes activos</div>
           <div class="kpi-value" id="kpi-clientes">0</div>
         </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Tareas pendientes</div>
+          <div class="kpi-value" id="kpi-tareas">0</div>
+        </div>
       </div>
 
       <div id="alert-concentracion" class="alert-box" hidden></div>
@@ -91,6 +96,11 @@
           <h3>Utilidad por cliente</h3>
           <div id="utilidad-cliente" class="stat-list"></div>
         </div>
+      </div>
+
+      <div class="panel">
+        <h3>Próximos pendientes</h3>
+        <div id="proximos-pendientes" class="stat-list"></div>
       </div>
     </section>
 
@@ -117,6 +127,58 @@
         <table class="data-table">
           <thead><tr><th>Nombre</th><th>Notas</th><th>Activo</th><th></th></tr></thead>
           <tbody id="tabla-clientes"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ---------- TAREAS ---------- -->
+    <section id="view-tareas" class="view" hidden>
+      <header class="view-header">
+        <h2>Tareas y pendientes</h2>
+        <p class="muted">Trabajo y personal, todo en un solo lugar.</p>
+      </header>
+
+      <div class="panel">
+        <form id="form-tarea" class="form-grid">
+          <input type="hidden" id="tarea-id">
+          <div><label>Título</label><input type="text" id="tarea-titulo" required></div>
+          <div><label>Categoría</label>
+            <select id="tarea-categoria">
+              <option>Trabajo</option><option>Personal</option>
+            </select>
+          </div>
+          <div><label>Cliente (opcional)</label><select id="tarea-cliente"><option value="">— Ninguno —</option></select></div>
+          <div><label>Estado</label>
+            <select id="tarea-estado">
+              <option>Pendiente</option><option>En curso</option><option>Hecho</option>
+            </select>
+          </div>
+          <div><label>Prioridad</label>
+            <select id="tarea-prioridad">
+              <option>Alta</option><option selected>Media</option><option>Baja</option>
+            </select>
+          </div>
+          <div><label>Fecha límite (opcional)</label><input type="date" id="tarea-fecha"></div>
+          <div class="form-actions">
+            <button type="submit" id="tarea-submit-btn" class="btn btn-primary">Agregar tarea</button>
+            <button type="button" id="tarea-cancel-btn" class="btn-cancel-edit" hidden>Cancelar edición</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <h3>Pendientes y en curso</h3>
+        <table class="data-table">
+          <thead><tr><th>Título</th><th>Categoría</th><th>Cliente</th><th>Prioridad</th><th>Fecha límite</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="tabla-tareas-activas"></tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h3>Hechas (últimas 10)</h3>
+        <table class="data-table">
+          <thead><tr><th>Título</th><th>Categoría</th><th>Cliente</th><th>Fecha límite</th><th></th></tr></thead>
+          <tbody id="tabla-tareas-hechas"></tbody>
         </table>
       </div>
     </section>
@@ -154,7 +216,11 @@
                 <div><label>Monto en euros</label><input type="number" step="0.01" id="ingreso-eur-monto" placeholder="Ej. 85"></div>
                 <div><label>Tipo de cambio (1 € = ? MXN)</label><input type="number" step="0.0001" id="ingreso-eur-tc" placeholder="Ej. 19.66"></div>
               </div>
-              <p class="muted">Al llenar estos dos campos, el Monto de arriba se calcula solo. Revisa el tipo de cambio del día antes de capturar.</p>
+              <div class="eur-helper-actions">
+                <button type="button" id="btn-tipo-cambio-hoy" class="btn-edit">Usar tipo de cambio de hoy</button>
+                <span id="tipo-cambio-status" class="muted"></span>
+              </div>
+              <p class="muted">Al llenar estos dos campos, el Monto de arriba se calcula solo.</p>
             </details>
           </div>
           <div class="form-actions">

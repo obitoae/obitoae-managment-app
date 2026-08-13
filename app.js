@@ -9,7 +9,7 @@ const money = (n) =>
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const currentPeriodKey = () => new Date().toISOString().slice(0, 7); // "YYYY-MM"
 
-let state = { clients: [], income: [], expenses: [] };
+let state = { clients: [], income: [], expenses: [], tasks: [] };
 
 // ============================================================
 // AUTH
@@ -74,14 +74,16 @@ document.querySelectorAll(".nav-item").forEach((btn) => {
 // CARGA DE DATOS
 // ============================================================
 async function loadAll() {
-  const [{ data: clients }, { data: income }, { data: expenses }] = await Promise.all([
+  const [{ data: clients }, { data: income }, { data: expenses }, { data: tasks }] = await Promise.all([
     supabase.from("clients").select("*").order("name"),
     supabase.from("income").select("*").order("date", { ascending: false }),
     supabase.from("expenses").select("*").order("date", { ascending: false }),
+    supabase.from("tasks").select("*").order("due_date", { ascending: true, nullsFirst: false }),
   ]);
   state.clients = clients || [];
   state.income = income || [];
   state.expenses = expenses || [];
+  state.tasks = tasks || [];
 }
 
 function clientName(id) {
@@ -92,6 +94,7 @@ function clientName(id) {
 function renderAll() {
   renderClientSelects();
   renderClientesView();
+  renderTareasView();
   renderIngresosView();
   renderGastosView();
   renderDashboard();
@@ -104,6 +107,8 @@ function renderClientSelects() {
   const opts = state.clients.map((c) => `<option value="${c.id}">${c.name}</option>`).join("");
   document.getElementById("ingreso-cliente").innerHTML = opts;
   document.getElementById("gasto-cliente").innerHTML =
+    `<option value="">— Ninguno —</option>` + opts;
+  document.getElementById("tarea-cliente").innerHTML =
     `<option value="">— Ninguno —</option>` + opts;
 }
 
@@ -149,6 +154,85 @@ document.getElementById("form-cliente").addEventListener("submit", async (e) => 
 });
 
 document.getElementById("cliente-cancel-btn").addEventListener("click", resetClienteForm);
+
+// ============================================================
+// TAREAS
+// ============================================================
+function fechaTareaHTML(t) {
+  if (!t.due_date) return "—";
+  const vencida = t.status !== "Hecho" && t.due_date < todayISO();
+  return vencida ? `<span class="due-overdue">${t.due_date}</span>` : t.due_date;
+}
+
+function renderTareasView() {
+  const activas = state.tasks.filter((t) => t.status !== "Hecho");
+  const hechas = state.tasks
+    .filter((t) => t.status === "Hecho")
+    .slice(0, 10);
+
+  document.getElementById("tabla-tareas-activas").innerHTML = activas
+    .map(
+      (t) => `
+    <tr>
+      <td>${t.title}</td>
+      <td>${t.category}</td>
+      <td>${t.client_id ? clientName(t.client_id) : "—"}</td>
+      <td><span class="priority-tag ${t.priority}">${t.priority}</span></td>
+      <td>${fechaTareaHTML(t)}</td>
+      <td>${t.status}</td>
+      <td>
+        <button class="btn-done" data-id="${t.id}" data-kind="tasks">Hecho</button>
+        <button class="btn-edit" data-id="${t.id}" data-kind="tasks">Editar</button>
+        <button class="btn-delete" data-id="${t.id}" data-kind="tasks">Eliminar</button>
+      </td>
+    </tr>`
+    )
+    .join("") || `<tr><td colspan="7" class="muted">No tienes tareas pendientes. 🎉</td></tr>`;
+
+  document.getElementById("tabla-tareas-hechas").innerHTML = hechas
+    .map(
+      (t) => `
+    <tr>
+      <td>${t.title}</td>
+      <td>${t.category}</td>
+      <td>${t.client_id ? clientName(t.client_id) : "—"}</td>
+      <td>${t.due_date || "—"}</td>
+      <td><button class="btn-delete" data-id="${t.id}" data-kind="tasks">Eliminar</button></td>
+    </tr>`
+    )
+    .join("") || `<tr><td colspan="5" class="muted">Aún no marcas ninguna tarea como hecha.</td></tr>`;
+}
+
+function resetTareaForm() {
+  document.getElementById("form-tarea").reset();
+  document.getElementById("tarea-id").value = "";
+  document.getElementById("tarea-submit-btn").textContent = "Agregar tarea";
+  document.getElementById("tarea-cancel-btn").hidden = true;
+}
+
+document.getElementById("form-tarea").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = document.getElementById("tarea-id").value;
+  const row = {
+    title: document.getElementById("tarea-titulo").value.trim(),
+    category: document.getElementById("tarea-categoria").value,
+    client_id: document.getElementById("tarea-cliente").value || null,
+    status: document.getElementById("tarea-estado").value,
+    priority: document.getElementById("tarea-prioridad").value,
+    due_date: document.getElementById("tarea-fecha").value || null,
+  };
+  if (!row.title) return;
+  if (id) {
+    await supabase.from("tasks").update(row).eq("id", id);
+  } else {
+    await supabase.from("tasks").insert(row);
+  }
+  resetTareaForm();
+  await loadAll();
+  renderAll();
+});
+
+document.getElementById("tarea-cancel-btn").addEventListener("click", resetTareaForm);
 
 // ============================================================
 // INGRESOS
@@ -221,6 +305,25 @@ function actualizarMontoDesdeEuros() {
 }
 document.getElementById("ingreso-eur-monto").addEventListener("input", actualizarMontoDesdeEuros);
 document.getElementById("ingreso-eur-tc").addEventListener("input", actualizarMontoDesdeEuros);
+
+document.getElementById("btn-tipo-cambio-hoy").addEventListener("click", async () => {
+  const statusEl = document.getElementById("tipo-cambio-status");
+  statusEl.textContent = "Consultando tipo de cambio...";
+  try {
+    const res = await fetch("https://api.frankfurter.dev/v1/latest?from=EUR&to=MXN");
+    const data = await res.json();
+    const rate = data && data.rates && data.rates.MXN;
+    if (rate) {
+      document.getElementById("ingreso-eur-tc").value = rate.toFixed(4);
+      statusEl.textContent = `Tipo de cambio de hoy (${data.date}): 1 € = ${rate.toFixed(2)} MXN`;
+      actualizarMontoDesdeEuros();
+    } else {
+      statusEl.textContent = "No se pudo obtener el tipo de cambio automático, ponlo manual.";
+    }
+  } catch (err) {
+    statusEl.textContent = "No se pudo obtener el tipo de cambio automático, ponlo manual.";
+  }
+});
 
 // ============================================================
 // GASTOS
@@ -331,7 +434,31 @@ document.addEventListener("click", (e) => {
     document.getElementById("gasto-submit-btn").textContent = "Guardar cambios";
     document.getElementById("gasto-cancel-btn").hidden = false;
     document.getElementById("form-gasto").scrollIntoView({ behavior: "smooth", block: "center" });
+  } else if (kind === "tasks") {
+    const t = state.tasks.find((x) => x.id === id);
+    if (!t) return;
+    document.getElementById("tarea-id").value = t.id;
+    document.getElementById("tarea-titulo").value = t.title;
+    document.getElementById("tarea-categoria").value = t.category;
+    document.getElementById("tarea-cliente").value = t.client_id || "";
+    document.getElementById("tarea-estado").value = t.status;
+    document.getElementById("tarea-prioridad").value = t.priority;
+    document.getElementById("tarea-fecha").value = t.due_date || "";
+    document.getElementById("tarea-submit-btn").textContent = "Guardar cambios";
+    document.getElementById("tarea-cancel-btn").hidden = false;
+    document.getElementById("form-tarea").scrollIntoView({ behavior: "smooth", block: "center" });
   }
+});
+
+// ============================================================
+// MARCAR TAREA COMO HECHA (delegado, acción rápida)
+// ============================================================
+document.addEventListener("click", async (e) => {
+  if (!e.target.matches(".btn-done")) return;
+  const { id, kind } = e.target.dataset;
+  await supabase.from(kind).update({ status: "Hecho" }).eq("id", id);
+  await loadAll();
+  renderAll();
 });
 
 // ============================================================
@@ -363,6 +490,7 @@ function renderDashboard() {
   document.getElementById("kpi-gastos").textContent = money(totalGastos);
   document.getElementById("kpi-utilidad").textContent = money(totalIngresos - totalGastos);
   document.getElementById("kpi-clientes").textContent = state.clients.filter((c) => c.active).length;
+  document.getElementById("kpi-tareas").textContent = state.tasks.filter((t) => t.status !== "Hecho").length;
 
   // ---- Concentración de ingresos por cliente (todo el histórico, más representativo que solo el mes) ----
   const porCliente = {};
@@ -451,6 +579,25 @@ function renderDashboard() {
           `<div class="stat-row"><span>${u.name}</span><span class="amount ${u.utilidad >= 0 ? "positive" : "negative"}">${money(u.utilidad)}</span></div>`
       )
       .join("") || `<p class="muted">Todavía no hay clientes con movimientos.</p>`;
+
+  // ---- Próximos pendientes (tareas activas, ordenadas por fecha límite) ----
+  const proximas = state.tasks
+    .filter((t) => t.status !== "Hecho")
+    .slice()
+    .sort((a, b) => {
+      if (!a.due_date && !b.due_date) return 0;
+      if (!a.due_date) return 1;
+      if (!b.due_date) return -1;
+      return a.due_date.localeCompare(b.due_date);
+    })
+    .slice(0, 5);
+  document.getElementById("proximos-pendientes").innerHTML =
+    proximas
+      .map(
+        (t) =>
+          `<div class="stat-row"><span>${t.title}${t.client_id ? " — " + clientName(t.client_id) : ""}</span><span class="amount">${fechaTareaHTML(t)}</span></div>`
+      )
+      .join("") || `<p class="muted">No tienes pendientes activos. 🎉</p>`;
 }
 
 // ============================================================
