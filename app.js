@@ -147,7 +147,17 @@ function corteRangeLabel(periodKey) {
   return `Corte del 27 de ${MESES_ES[prevMonth - 1]} al 26 de ${MESES_ES[m - 1]} ${y}`;
 }
 
-let state = { clients: [], income: [], expenses: [], tasks: [], savingsFunds: [], savingsMoves: [], creditPayments: [] };
+let state = {
+  clients: [],
+  income: [],
+  expenses: [],
+  tasks: [],
+  savingsFunds: [],
+  savingsMoves: [],
+  creditPayments: [],
+  invoicesIssued: [],
+  invoicesReceived: [],
+};
 
 // ============================================================
 // AUTH
@@ -183,9 +193,18 @@ async function showApp() {
   renderAll();
 }
 
-document.getElementById("btn-cover-ingresar").addEventListener("click", () => {
-  coverScreen.hidden = true;
-  appEl.hidden = false;
+document.getElementById("btn-cover-ingresar").addEventListener("click", (e) => {
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  coverScreen.classList.add("cover-exit");
+  setTimeout(() => {
+    coverScreen.hidden = true;
+    coverScreen.classList.remove("cover-exit");
+    btn.disabled = false;
+    appEl.hidden = false;
+    appEl.classList.add("app-enter");
+    setTimeout(() => appEl.classList.remove("app-enter"), 500);
+  }, 480);
 });
 
 document.getElementById("login-form").addEventListener("submit", async (e) => {
@@ -194,10 +213,19 @@ document.getElementById("login-form").addEventListener("submit", async (e) => {
   const password = document.getElementById("login-password").value;
   const errEl = document.getElementById("login-error");
   errEl.hidden = true;
+  const submitBtn = document.querySelector("#login-form button[type='submit']");
+  if (submitBtn) submitBtn.classList.add("btn-loading");
   const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (submitBtn) submitBtn.classList.remove("btn-loading");
   if (error) {
     errEl.textContent = "No pudimos entrar: " + error.message;
     errEl.hidden = false;
+    const loginCard = document.querySelector(".login-card");
+    if (loginCard) {
+      loginCard.classList.remove("shake");
+      void loginCard.offsetWidth;
+      loginCard.classList.add("shake");
+    }
     return;
   }
   await showApp();
@@ -266,11 +294,23 @@ function loadAllQueries() {
     supabase.from("savings_funds").select("*").order("name"),
     supabase.from("savings_moves").select("*").order("date", { ascending: false }),
     supabase.from("credit_payments").select("*").order("date", { ascending: false }),
+    supabase.from("invoices_issued").select("*").order("date", { ascending: false }),
+    supabase.from("invoices_received").select("*").order("date", { ascending: false }),
   ];
 }
 
 async function loadAll() {
-  const tableNames = ["clients", "income", "expenses", "tasks", "savings_funds", "savings_moves", "credit_payments"];
+  const tableNames = [
+    "clients",
+    "income",
+    "expenses",
+    "tasks",
+    "savings_funds",
+    "savings_moves",
+    "credit_payments",
+    "invoices_issued",
+    "invoices_received",
+  ];
   let results = await Promise.all(loadAllQueries());
 
   // Reintento automático: errores intermitentes (p. ej. "JWT issued at future" cuando
@@ -299,7 +339,17 @@ async function loadAll() {
         "\n\nCasi siempre significa que falta correr el SQL de esa parte en Supabase (archivo schema.sql, SQL Editor). El resto de la app sigue funcionando."
     );
   }
-  const [{ data: clients }, { data: income }, { data: expenses }, { data: tasks }, { data: savingsFunds }, { data: savingsMoves }, { data: creditPayments }] = results;
+  const [
+    { data: clients },
+    { data: income },
+    { data: expenses },
+    { data: tasks },
+    { data: savingsFunds },
+    { data: savingsMoves },
+    { data: creditPayments },
+    { data: invoicesIssued },
+    { data: invoicesReceived },
+  ] = results;
   state.clients = clients || [];
   state.income = income || [];
   state.expenses = expenses || [];
@@ -307,6 +357,8 @@ async function loadAll() {
   state.savingsFunds = savingsFunds || [];
   state.savingsMoves = savingsMoves || [];
   state.creditPayments = creditPayments || [];
+  state.invoicesIssued = invoicesIssued || [];
+  state.invoicesReceived = invoicesReceived || [];
 }
 
 function clientName(id) {
@@ -340,6 +392,7 @@ function renderAll() {
   renderGastosView();
   renderCreditoView();
   renderAhorroView();
+  renderFacturasView();
   renderHistoricoDetalle();
   renderDashboard();
   renderInicioView();
@@ -470,6 +523,8 @@ function renderClientSelects() {
     `<option value="">— Ninguno —</option>` + opts;
   document.getElementById("tarea-cliente").innerHTML =
     `<option value="">— Ninguno —</option>` + opts;
+  const facturaClienteEl = document.getElementById("factura-emitida-cliente");
+  if (facturaClienteEl) facturaClienteEl.innerHTML = opts;
 }
 
 function renderClientesView() {
@@ -532,14 +587,18 @@ function tareaCardHTML(t) {
   const moveButtons = [];
   if (t.status === "Pendiente") {
     moveButtons.push(`<button class="kanban-move-btn" data-id="${t.id}" data-to="En curso">→ En curso</button>`);
+    moveButtons.push(`<button class="kanban-move-btn" data-id="${t.id}" data-to="Cancelado">✕ Cancelar</button>`);
   } else if (t.status === "En curso") {
     moveButtons.push(`<button class="kanban-move-btn" data-id="${t.id}" data-to="Pendiente">← Pendiente</button>`);
     moveButtons.push(`<button class="kanban-move-btn" data-id="${t.id}" data-to="Hecho">→ Hecho</button>`);
+    moveButtons.push(`<button class="kanban-move-btn" data-id="${t.id}" data-to="Cancelado">✕ Cancelar</button>`);
   } else if (t.status === "Hecho") {
     moveButtons.push(`<button class="kanban-move-btn" data-id="${t.id}" data-to="En curso">← Reabrir</button>`);
+  } else if (t.status === "Cancelado") {
+    moveButtons.push(`<button class="kanban-move-btn" data-id="${t.id}" data-to="Pendiente">← Reabrir</button>`);
   }
   return `
-    <div class="kanban-card">
+    <div class="kanban-card" draggable="true" data-id="${t.id}">
       <div class="kanban-card-title">${t.title}</div>
       <div class="kanban-card-meta">
         <span class="priority-tag ${t.priority}">${t.priority}</span>
@@ -557,7 +616,7 @@ function tareaCardHTML(t) {
 }
 
 function renderTareasView() {
-  const porEstado = { Pendiente: [], "En curso": [], Hecho: [] };
+  const porEstado = { Pendiente: [], "En curso": [], Hecho: [], Cancelado: [] };
   state.tasks.forEach((t) => {
     if (porEstado[t.status]) porEstado[t.status].push(t);
   });
@@ -568,10 +627,15 @@ function renderTareasView() {
     .slice()
     .sort((a, b) => (b.due_date || "").localeCompare(a.due_date || ""))
     .slice(0, 15);
+  const canceladoOrdenado = porEstado["Cancelado"]
+    .slice()
+    .sort((a, b) => (b.due_date || "").localeCompare(a.due_date || ""))
+    .slice(0, 15);
 
   document.getElementById("count-pendiente").textContent = porEstado["Pendiente"].length;
   document.getElementById("count-encurso").textContent = porEstado["En curso"].length;
   document.getElementById("count-hecho").textContent = porEstado["Hecho"].length;
+  document.getElementById("count-cancelado").textContent = porEstado["Cancelado"].length;
 
   document.getElementById("kanban-pendiente").innerHTML =
     porEstado["Pendiente"].map(tareaCardHTML).join("") || `<p class="muted">Sin tareas aquí. 🎉</p>`;
@@ -579,6 +643,8 @@ function renderTareasView() {
     porEstado["En curso"].map(tareaCardHTML).join("") || `<p class="muted">Sin tareas aquí.</p>`;
   document.getElementById("kanban-hecho").innerHTML =
     hechoOrdenado.map(tareaCardHTML).join("") || `<p class="muted">Sin tareas aquí todavía.</p>`;
+  document.getElementById("kanban-cancelado").innerHTML =
+    canceladoOrdenado.map(tareaCardHTML).join("") || `<p class="muted">Sin tareas canceladas.</p>`;
 }
 
 function renderTareasHistoricoView() {
@@ -611,6 +677,46 @@ document.addEventListener("click", async (e) => {
   await supabase.from("tasks").update({ status: to }).eq("id", id);
   await loadAll();
   renderAll();
+});
+
+// ---- Arrastrar y soltar tarjetas de tareas entre columnas ----
+document.addEventListener("dragstart", (e) => {
+  const card = e.target.closest && e.target.closest(".kanban-card");
+  if (!card) return;
+  card.classList.add("dragging");
+  e.dataTransfer.effectAllowed = "move";
+  e.dataTransfer.setData("text/plain", card.dataset.id);
+});
+
+document.addEventListener("dragend", (e) => {
+  const card = e.target.closest && e.target.closest(".kanban-card");
+  if (!card) return;
+  card.classList.remove("dragging");
+  document.querySelectorAll(".kanban-dropzone.drag-over").forEach((z) => z.classList.remove("drag-over"));
+});
+
+document.querySelectorAll(".kanban-dropzone").forEach((zone) => {
+  zone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    zone.classList.add("drag-over");
+  });
+  zone.addEventListener("dragleave", (e) => {
+    if (e.target === zone) zone.classList.remove("drag-over");
+  });
+  zone.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag-over");
+    const id = e.dataTransfer.getData("text/plain");
+    const column = zone.closest(".kanban-column");
+    const to = column && column.dataset.status;
+    if (!id || !to) return;
+    const tarea = state.tasks.find((t) => String(t.id) === String(id));
+    if (tarea && tarea.status === to) return;
+    await supabase.from("tasks").update({ status: to }).eq("id", id);
+    await loadAll();
+    renderAll();
+  });
 });
 
 document.addEventListener("click", (e) => {
@@ -1086,6 +1192,162 @@ document.getElementById("form-movimiento").addEventListener("submit", async (e) 
 document.getElementById("movimiento-cancel-btn").addEventListener("click", resetMovimientoForm);
 
 // ============================================================
+// FACTURAS (emitidas a clientes + recibidas de proveedores)
+// ============================================================
+document.getElementById("factura-emitida-fecha").value = todayISO();
+document.getElementById("factura-recibida-fecha").value = todayISO();
+
+function facturaEmitidaMontos(f) {
+  const subtotal = Number(f.subtotal || 0);
+  const ivaAmount = f.iva_amount != null ? Number(f.iva_amount) : (subtotal * Number(f.iva_rate || 0)) / 100;
+  const isrAmount = f.isr_amount != null ? Number(f.isr_amount) : (subtotal * Number(f.isr_rate || 0)) / 100;
+  const total = subtotal + ivaAmount - isrAmount;
+  return { subtotal, ivaAmount, isrAmount, total };
+}
+
+function facturaRecibidaMontos(f) {
+  const subtotal = Number(f.subtotal || 0);
+  const ivaAmount = f.iva_amount != null ? Number(f.iva_amount) : (subtotal * Number(f.iva_rate || 0)) / 100;
+  const total = subtotal + ivaAmount;
+  return { subtotal, ivaAmount, total };
+}
+
+function renderFacturasView() {
+  // ---- Resumen IVA/ISR ----
+  const ivaTrasladado = state.invoicesIssued.reduce((s, f) => s + facturaEmitidaMontos(f).ivaAmount, 0);
+  const isrRetenido = state.invoicesIssued.reduce((s, f) => s + facturaEmitidaMontos(f).isrAmount, 0);
+  const ivaAcreditable = state.invoicesReceived.reduce((s, f) => s + facturaRecibidaMontos(f).ivaAmount, 0);
+  const ivaNeto = ivaTrasladado - ivaAcreditable;
+
+  document.getElementById("kpi-iva-trasladado").textContent = money(ivaTrasladado);
+  document.getElementById("kpi-iva-acreditable").textContent = money(ivaAcreditable);
+  document.getElementById("kpi-iva-neto").textContent = money(Math.abs(ivaNeto));
+  document.getElementById("kpi-iva-neto-label").textContent = ivaNeto >= 0 ? "IVA a pagar" : "IVA a favor";
+  document.getElementById("kpi-isr-retenido").textContent = money(isrRetenido);
+  document.getElementById("facturas-resumen-nota").textContent =
+    "El % de IVA/ISR de cada factura se captura manualmente porque varía según el cliente (ej. con clientes que solo retienen ISR, deja el % de IVA en 0).";
+
+  // ---- Tabla: emitidas ----
+  const emitidasOrdenadas = state.invoicesIssued.slice().sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  document.getElementById("tabla-facturas-emitidas").innerHTML =
+    emitidasOrdenadas
+      .map((f) => {
+        const { subtotal, ivaAmount, isrAmount, total } = facturaEmitidaMontos(f);
+        return `
+    <tr>
+      <td>${f.date || "—"}</td>
+      <td class="ing-amount">${clientName(f.client_id)}</td>
+      <td>${f.folio || "—"}</td>
+      <td class="ing-amount">${money(subtotal)}</td>
+      <td class="ing-amount">${money(ivaAmount)} <span class="muted">(${f.iva_rate || 0}%)</span></td>
+      <td class="ing-amount">${money(isrAmount)} <span class="muted">(${f.isr_rate || 0}%)</span></td>
+      <td class="ing-amount">${money(total)}</td>
+      <td><span class="invoiced-tag ${f.status === "Cobrada" ? "si" : "no"}">${f.status || "Pendiente"}</span></td>
+      <td>
+        <button class="btn-edit" data-id="${f.id}" data-kind="invoices_issued">Editar</button>
+        <button class="btn-delete" data-id="${f.id}" data-kind="invoices_issued">Eliminar</button>
+      </td>
+    </tr>`;
+      })
+      .join("") || `<tr><td colspan="9" class="muted">Todavía no registras facturas emitidas.</td></tr>`;
+
+  // ---- Tabla: recibidas ----
+  const recibidasOrdenadas = state.invoicesReceived.slice().sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  document.getElementById("tabla-facturas-recibidas").innerHTML =
+    recibidasOrdenadas
+      .map((f) => {
+        const { subtotal, ivaAmount, total } = facturaRecibidaMontos(f);
+        return `
+    <tr>
+      <td>${f.date || "—"}</td>
+      <td class="ing-amount">${f.provider}</td>
+      <td>${f.folio || "—"}</td>
+      <td class="ing-amount">${money(subtotal)}</td>
+      <td class="ing-amount">${money(ivaAmount)} <span class="muted">(${f.iva_rate || 0}%)</span></td>
+      <td class="ing-amount">${money(total)}</td>
+      <td><span class="invoiced-tag ${f.status === "Pagada" ? "si" : "no"}">${f.status || "Pendiente"}</span></td>
+      <td>
+        <button class="btn-edit" data-id="${f.id}" data-kind="invoices_received">Editar</button>
+        <button class="btn-delete" data-id="${f.id}" data-kind="invoices_received">Eliminar</button>
+      </td>
+    </tr>`;
+      })
+      .join("") || `<tr><td colspan="8" class="muted">Todavía no registras facturas recibidas.</td></tr>`;
+}
+
+function resetFacturaEmitidaForm() {
+  document.getElementById("form-factura-emitida").reset();
+  document.getElementById("factura-emitida-id").value = "";
+  document.getElementById("factura-emitida-fecha").value = todayISO();
+  document.getElementById("factura-emitida-iva-rate").value = "16";
+  document.getElementById("factura-emitida-isr-rate").value = "0";
+  document.getElementById("factura-emitida-submit-btn").textContent = "Agregar factura";
+  document.getElementById("factura-emitida-cancel-btn").hidden = true;
+}
+
+document.getElementById("form-factura-emitida").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = document.getElementById("factura-emitida-id").value;
+  const subtotal = parseFloat(document.getElementById("factura-emitida-subtotal").value) || 0;
+  const ivaRate = parseFloat(document.getElementById("factura-emitida-iva-rate").value) || 0;
+  const isrRate = parseFloat(document.getElementById("factura-emitida-isr-rate").value) || 0;
+  const row = {
+    client_id: document.getElementById("factura-emitida-cliente").value,
+    folio: document.getElementById("factura-emitida-folio").value.trim(),
+    date: document.getElementById("factura-emitida-fecha").value,
+    subtotal,
+    iva_rate: ivaRate,
+    iva_amount: (subtotal * ivaRate) / 100,
+    isr_rate: isrRate,
+    isr_amount: (subtotal * isrRate) / 100,
+    status: document.getElementById("factura-emitida-estatus").value,
+    notes: document.getElementById("factura-emitida-notas").value.trim(),
+  };
+  if (!row.client_id) return;
+  const ok = await saveRow("invoices_issued", id, row);
+  if (!ok) return;
+  resetFacturaEmitidaForm();
+  await loadAll();
+  renderAll();
+});
+
+document.getElementById("factura-emitida-cancel-btn").addEventListener("click", resetFacturaEmitidaForm);
+
+function resetFacturaRecibidaForm() {
+  document.getElementById("form-factura-recibida").reset();
+  document.getElementById("factura-recibida-id").value = "";
+  document.getElementById("factura-recibida-fecha").value = todayISO();
+  document.getElementById("factura-recibida-iva-rate").value = "16";
+  document.getElementById("factura-recibida-submit-btn").textContent = "Agregar factura";
+  document.getElementById("factura-recibida-cancel-btn").hidden = true;
+}
+
+document.getElementById("form-factura-recibida").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = document.getElementById("factura-recibida-id").value;
+  const subtotal = parseFloat(document.getElementById("factura-recibida-subtotal").value) || 0;
+  const ivaRate = parseFloat(document.getElementById("factura-recibida-iva-rate").value) || 0;
+  const row = {
+    provider: document.getElementById("factura-recibida-proveedor").value.trim(),
+    folio: document.getElementById("factura-recibida-folio").value.trim(),
+    date: document.getElementById("factura-recibida-fecha").value,
+    subtotal,
+    iva_rate: ivaRate,
+    iva_amount: (subtotal * ivaRate) / 100,
+    status: document.getElementById("factura-recibida-estatus").value,
+    notes: document.getElementById("factura-recibida-notas").value.trim(),
+  };
+  if (!row.provider) return;
+  const ok = await saveRow("invoices_received", id, row);
+  if (!ok) return;
+  resetFacturaRecibidaForm();
+  await loadAll();
+  renderAll();
+});
+
+document.getElementById("factura-recibida-cancel-btn").addEventListener("click", resetFacturaRecibidaForm);
+
+// ============================================================
 // EDITAR (delegado, carga el registro en su formulario)
 // ============================================================
 document.addEventListener("click", (e) => {
@@ -1191,6 +1453,37 @@ document.addEventListener("click", (e) => {
     document.getElementById("pago-credito-cancel-btn").hidden = false;
     switchView("credito");
     document.getElementById("form-pago-credito").scrollIntoView({ behavior: "smooth", block: "center" });
+  } else if (kind === "invoices_issued") {
+    const f = state.invoicesIssued.find((x) => x.id === id);
+    if (!f) return;
+    document.getElementById("factura-emitida-id").value = f.id;
+    document.getElementById("factura-emitida-cliente").value = f.client_id || "";
+    document.getElementById("factura-emitida-folio").value = f.folio || "";
+    document.getElementById("factura-emitida-fecha").value = f.date || todayISO();
+    document.getElementById("factura-emitida-subtotal").value = f.subtotal;
+    document.getElementById("factura-emitida-iva-rate").value = f.iva_rate;
+    document.getElementById("factura-emitida-isr-rate").value = f.isr_rate;
+    document.getElementById("factura-emitida-estatus").value = f.status || "Pendiente";
+    document.getElementById("factura-emitida-notas").value = f.notes || "";
+    document.getElementById("factura-emitida-submit-btn").textContent = "Guardar cambios";
+    document.getElementById("factura-emitida-cancel-btn").hidden = false;
+    switchView("facturas");
+    document.getElementById("form-factura-emitida").scrollIntoView({ behavior: "smooth", block: "center" });
+  } else if (kind === "invoices_received") {
+    const f = state.invoicesReceived.find((x) => x.id === id);
+    if (!f) return;
+    document.getElementById("factura-recibida-id").value = f.id;
+    document.getElementById("factura-recibida-proveedor").value = f.provider || "";
+    document.getElementById("factura-recibida-folio").value = f.folio || "";
+    document.getElementById("factura-recibida-fecha").value = f.date || todayISO();
+    document.getElementById("factura-recibida-subtotal").value = f.subtotal;
+    document.getElementById("factura-recibida-iva-rate").value = f.iva_rate;
+    document.getElementById("factura-recibida-estatus").value = f.status || "Pendiente";
+    document.getElementById("factura-recibida-notas").value = f.notes || "";
+    document.getElementById("factura-recibida-submit-btn").textContent = "Guardar cambios";
+    document.getElementById("factura-recibida-cancel-btn").hidden = false;
+    switchView("facturas");
+    document.getElementById("form-factura-recibida").scrollIntoView({ behavior: "smooth", block: "center" });
   }
 });
 

@@ -72,6 +72,7 @@
         <div class="nav-group-items">
           <button class="nav-item nav-subitem" data-view="ingresos">Ingresos</button>
           <button class="nav-item nav-subitem" data-view="gastos">Gastos</button>
+          <button class="nav-item nav-subitem" data-view="facturas">Facturas</button>
           <button class="nav-item nav-subitem" data-view="credito">Tarjeta de crédito</button>
           <button class="nav-item nav-subitem" data-view="ahorro">Ahorro</button>
           <button class="nav-item nav-subitem" data-view="historico">Histórico</button>
@@ -227,7 +228,7 @@
           <div><label>Cliente (opcional)</label><select id="tarea-cliente"><option value="">— Ninguno —</option></select></div>
           <div><label>Estado</label>
             <select id="tarea-estado">
-              <option>Pendiente</option><option>En curso</option><option>Hecho</option>
+              <option>Pendiente</option><option>En curso</option><option>Hecho</option><option>Cancelado</option>
             </select>
           </div>
           <div><label>Prioridad</label>
@@ -245,18 +246,23 @@
 
       <div class="panel">
         <h3>Tablero de tareas</h3>
+        <p class="muted" style="margin-top: -6px; margin-bottom: 12px;">Arrastra una tarjeta a otra columna para cambiarle el estado, o usa los botones de siempre.</p>
         <div class="kanban-board">
-          <div class="kanban-column">
+          <div class="kanban-column" data-status="Pendiente">
             <div class="kanban-column-header"><span>Pendiente</span><span class="kanban-count" id="count-pendiente">0</span></div>
-            <div id="kanban-pendiente"></div>
+            <div id="kanban-pendiente" class="kanban-dropzone"></div>
           </div>
-          <div class="kanban-column">
+          <div class="kanban-column" data-status="En curso">
             <div class="kanban-column-header"><span>En curso</span><span class="kanban-count" id="count-encurso">0</span></div>
-            <div id="kanban-encurso"></div>
+            <div id="kanban-encurso" class="kanban-dropzone"></div>
           </div>
-          <div class="kanban-column">
+          <div class="kanban-column" data-status="Hecho">
             <div class="kanban-column-header"><span>Hecho</span><span class="kanban-count" id="count-hecho">0</span></div>
-            <div id="kanban-hecho"></div>
+            <div id="kanban-hecho" class="kanban-dropzone"></div>
+          </div>
+          <div class="kanban-column" data-status="Cancelado">
+            <div class="kanban-column-header"><span>Cancelado</span><span class="kanban-count" id="count-cancelado">0</span></div>
+            <div id="kanban-cancelado" class="kanban-dropzone"></div>
           </div>
         </div>
         <p class="muted" style="margin-top: 12px;">Esta columna solo muestra las últimas 15 tareas hechas. El historial completo está en Tareas → Histórico.</p>
@@ -391,6 +397,103 @@
         <table class="data-table">
           <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Cliente</th><th>Monto</th><th>Recurrencia</th><th>Método</th><th>Facturado</th><th></th></tr></thead>
           <tbody id="tabla-gastos"></tbody>
+        </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- FACTURAS ---------- -->
+    <section id="view-facturas" class="view" hidden>
+      <header class="view-header">
+        <h2>Facturas</h2>
+        <p class="muted">Facturas que emites a tus clientes y facturas que te emiten a ti — para saber cuánto IVA/ISR debes o te deben.</p>
+      </header>
+
+      <div class="kpi-row kpi-row-4">
+        <div class="kpi-card">
+          <div class="kpi-label">IVA trasladado (emitidas)</div>
+          <div class="kpi-value ing-amount" id="kpi-iva-trasladado">$0</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">IVA acreditable (recibidas)</div>
+          <div class="kpi-value ing-amount" id="kpi-iva-acreditable">$0</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label" id="kpi-iva-neto-label">IVA a pagar</div>
+          <div class="kpi-value ing-amount" id="kpi-iva-neto">$0</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">ISR retenido (emitidas)</div>
+          <div class="kpi-value ing-amount" id="kpi-isr-retenido">$0</div>
+        </div>
+      </div>
+      <p class="muted" id="facturas-resumen-nota" style="margin-top: -8px; margin-bottom: 20px;"></p>
+
+      <!-- ---- Emitidas ---- -->
+      <div class="panel">
+        <h3>Nueva factura emitida</h3>
+        <p class="muted" style="margin-top: -8px;">El % de IVA e ISR depende de cada cliente — captúralo caso por caso (ej. algunos clientes solo retienen ISR y no llevan IVA).</p>
+        <form id="form-factura-emitida" class="form-grid">
+          <input type="hidden" id="factura-emitida-id">
+          <div><label>Cliente</label><select id="factura-emitida-cliente" required></select></div>
+          <div><label>Folio (opcional)</label><input type="text" id="factura-emitida-folio"></div>
+          <div><label>Fecha</label><input type="date" id="factura-emitida-fecha" required></div>
+          <div><label>Subtotal</label><input type="number" step="0.01" id="factura-emitida-subtotal" required></div>
+          <div><label>% IVA</label><input type="number" step="0.01" id="factura-emitida-iva-rate" value="16"></div>
+          <div><label>% ISR retenido</label><input type="number" step="0.01" id="factura-emitida-isr-rate" value="0"></div>
+          <div><label>Estatus</label>
+            <select id="factura-emitida-estatus">
+              <option>Pendiente</option><option>Cobrada</option>
+            </select>
+          </div>
+          <div><label>Notas (opcional)</label><input type="text" id="factura-emitida-notas"></div>
+          <div class="form-actions">
+            <button type="submit" id="factura-emitida-submit-btn" class="btn btn-primary">Agregar factura</button>
+            <button type="button" id="factura-emitida-cancel-btn" class="btn-cancel-edit" hidden>Cancelar edición</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <h3>Facturas emitidas</h3>
+        <div class="table-scroll">
+        <table class="data-table">
+          <thead><tr><th>Fecha</th><th>Cliente</th><th>Folio</th><th>Subtotal</th><th>IVA</th><th>ISR ret.</th><th>Total</th><th>Estatus</th><th></th></tr></thead>
+          <tbody id="tabla-facturas-emitidas"></tbody>
+        </table>
+        </div>
+      </div>
+
+      <!-- ---- Recibidas ---- -->
+      <div class="panel">
+        <h3>Nueva factura recibida</h3>
+        <p class="muted" style="margin-top: -8px;">Facturas que te dan tus proveedores — para calcular el IVA que puedes acreditar.</p>
+        <form id="form-factura-recibida" class="form-grid">
+          <input type="hidden" id="factura-recibida-id">
+          <div><label>Proveedor</label><input type="text" id="factura-recibida-proveedor" required></div>
+          <div><label>Folio (opcional)</label><input type="text" id="factura-recibida-folio"></div>
+          <div><label>Fecha</label><input type="date" id="factura-recibida-fecha" required></div>
+          <div><label>Subtotal</label><input type="number" step="0.01" id="factura-recibida-subtotal" required></div>
+          <div><label>% IVA</label><input type="number" step="0.01" id="factura-recibida-iva-rate" value="16"></div>
+          <div><label>Estatus</label>
+            <select id="factura-recibida-estatus">
+              <option>Pendiente</option><option>Pagada</option>
+            </select>
+          </div>
+          <div><label>Notas (opcional)</label><input type="text" id="factura-recibida-notas"></div>
+          <div class="form-actions">
+            <button type="submit" id="factura-recibida-submit-btn" class="btn btn-primary">Agregar factura</button>
+            <button type="button" id="factura-recibida-cancel-btn" class="btn-cancel-edit" hidden>Cancelar edición</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <h3>Facturas recibidas</h3>
+        <div class="table-scroll">
+        <table class="data-table">
+          <thead><tr><th>Fecha</th><th>Proveedor</th><th>Folio</th><th>Subtotal</th><th>IVA</th><th>Total</th><th>Estatus</th><th></th></tr></thead>
+          <tbody id="tabla-facturas-recibidas"></tbody>
         </table>
         </div>
       </div>
