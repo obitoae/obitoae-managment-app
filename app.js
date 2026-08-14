@@ -1280,7 +1280,7 @@ function resetFacturaEmitidaForm() {
   document.getElementById("factura-emitida-id").value = "";
   document.getElementById("factura-emitida-fecha").value = todayISO();
   document.getElementById("factura-emitida-iva-rate").value = "16";
-  document.getElementById("factura-emitida-isr-rate").value = "0";
+  document.getElementById("factura-emitida-isr-rate").value = "1.25";
   document.getElementById("factura-emitida-submit-btn").textContent = "Agregar factura";
   document.getElementById("factura-emitida-cancel-btn").hidden = true;
 }
@@ -1325,15 +1325,19 @@ function resetFacturaRecibidaForm() {
 document.getElementById("form-factura-recibida").addEventListener("submit", async (e) => {
   e.preventDefault();
   const id = document.getElementById("factura-recibida-id").value;
-  const subtotal = parseFloat(document.getElementById("factura-recibida-subtotal").value) || 0;
+  const total = parseFloat(document.getElementById("factura-recibida-total").value) || 0;
   const ivaRate = parseFloat(document.getElementById("factura-recibida-iva-rate").value) || 0;
+  // El usuario captura el TOTAL de la factura (como viene impreso, con IVA incluido).
+  // Sacamos el IVA "hacia atrás": subtotal = total / (1 + tasa), iva = total - subtotal.
+  const subtotal = ivaRate ? total / (1 + ivaRate / 100) : total;
+  const ivaAmount = total - subtotal;
   const row = {
     provider: document.getElementById("factura-recibida-proveedor").value.trim(),
     folio: document.getElementById("factura-recibida-folio").value.trim(),
     date: document.getElementById("factura-recibida-fecha").value,
     subtotal,
     iva_rate: ivaRate,
-    iva_amount: (subtotal * ivaRate) / 100,
+    iva_amount: ivaAmount,
     status: document.getElementById("factura-recibida-estatus").value,
     notes: document.getElementById("factura-recibida-notas").value.trim(),
   };
@@ -1476,7 +1480,7 @@ document.addEventListener("click", (e) => {
     document.getElementById("factura-recibida-proveedor").value = f.provider || "";
     document.getElementById("factura-recibida-folio").value = f.folio || "";
     document.getElementById("factura-recibida-fecha").value = f.date || todayISO();
-    document.getElementById("factura-recibida-subtotal").value = f.subtotal;
+    document.getElementById("factura-recibida-total").value = Number(f.subtotal || 0) + Number(f.iva_amount || 0);
     document.getElementById("factura-recibida-iva-rate").value = f.iva_rate;
     document.getElementById("factura-recibida-estatus").value = f.status || "Pendiente";
     document.getElementById("factura-recibida-notas").value = f.notes || "";
