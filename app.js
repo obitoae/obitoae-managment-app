@@ -6,6 +6,13 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const money = (n) =>
   "$" + (Number(n) || 0).toLocaleString("es-MX", { maximumFractionDigits: 0 });
 
+// Para Facturas: nada de redondear a peso cerrado — si redondeamos cada cifra
+// por separado (subtotal, IVA, total) por separado, pueden dejar de cuadrar
+// entre sí aunque el cálculo interno esté bien. Aquí siempre se muestran los
+// centavos exactos.
+const moneyExact = (n) =>
+  "$" + (Number(n) || 0).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const currentPeriodKey = () => new Date().toISOString().slice(0, 7); // "YYYY-MM"
 
@@ -1212,6 +1219,23 @@ function facturaRecibidaMontos(f) {
   return { subtotal, ivaAmount, total };
 }
 
+// ---- RESICO: tabla de tasas de ISR (Art. 113-E LISR, personas físicas) ----
+// La tasa se determina según el ingreso ACUMULADO del año (desde enero), y esa
+// tasa se aplica sobre lo COBRADO en el mes en curso para el pago provisional.
+const RESICO_ISR_BRACKETS = [
+  { max: 25000, rate: 1.0 },
+  { max: 50000, rate: 1.1 },
+  { max: 83333.33, rate: 1.5 },
+  { max: 208333.33, rate: 2.0 },
+  { max: 291666.66, rate: 2.5 },
+  { max: Infinity, rate: 2.5 }, // por si el acumulado supera el tope de RESICO, referencia con la tasa más alta
+];
+
+function resicoIsrRate(ingresoAcumuladoAnio) {
+  const bracket = RESICO_ISR_BRACKETS.find((b) => ingresoAcumuladoAnio <= b.max);
+  return bracket ? bracket.rate : RESICO_ISR_BRACKETS[RESICO_ISR_BRACKETS.length - 1].rate;
+}
+
 function renderFacturasView() {
   // ---- Resumen IVA/ISR ----
   const ivaTrasladado = state.invoicesIssued.reduce((s, f) => s + facturaEmitidaMontos(f).ivaAmount, 0);
@@ -1219,13 +1243,39 @@ function renderFacturasView() {
   const ivaAcreditable = state.invoicesReceived.reduce((s, f) => s + facturaRecibidaMontos(f).ivaAmount, 0);
   const ivaNeto = ivaTrasladado - ivaAcreditable;
 
-  document.getElementById("kpi-iva-trasladado").textContent = money(ivaTrasladado);
-  document.getElementById("kpi-iva-acreditable").textContent = money(ivaAcreditable);
-  document.getElementById("kpi-iva-neto").textContent = money(Math.abs(ivaNeto));
+  document.getElementById("kpi-iva-trasladado").textContent = moneyExact(ivaTrasladado);
+  document.getElementById("kpi-iva-acreditable").textContent = moneyExact(ivaAcreditable);
+  document.getElementById("kpi-iva-neto").textContent = moneyExact(Math.abs(ivaNeto));
   document.getElementById("kpi-iva-neto-label").textContent = ivaNeto >= 0 ? "IVA a pagar" : "IVA a favor";
-  document.getElementById("kpi-isr-retenido").textContent = money(isrRetenido);
+  document.getElementById("kpi-isr-retenido").textContent = moneyExact(isrRetenido);
   document.getElementById("facturas-resumen-nota").textContent =
     "El % de IVA/ISR de cada factura se captura manualmente porque varía según el cliente (ej. con clientes que solo retienen ISR, deja el % de IVA en 0).";
+
+  // ---- ISR retenido (a tu favor) vs. ISR que tú pagas (pago provisional RESICO) ----
+  const periodo = currentPeriodKey(); // "YYYY-MM"
+  const anioActual = periodo.slice(0, 4);
+  const emitidasCobradas = state.invoicesIssued.filter((f) => f.status === "Cobrada" && f.date);
+  const ingresoMes = emitidasCobradas
+    .filter((f) => f.date.slice(0, 7) === periodo)
+    .reduce((s, f) => s + facturaEmitidaMontos(f).subtotal, 0);
+  const ingresoAcumuladoAnio = emitidasCobradas
+    .filter((f) => f.date.slice(0, 4) === anioActual)
+    .reduce((s, f) => s + facturaEmitidaMontos(f).subtotal, 0);
+  const tasaResico = resicoIsrRate(ingresoAcumuladoAnio);
+  const isrCausadoMes = (ingresoMes * tasaResico) / 100;
+  const isrRetenidoMes = emitidasCobradas
+    .filter((f) => f.date.slice(0, 7) === periodo)
+    .reduce((s, f) => s + facturaEmitidaMontos(f).isrAmount, 0);
+  const isrNetoAPagar = isrCausadoMes - isrRetenidoMes;
+
+  document.getElementById("facturas-isr-resico").innerHTML = `
+    <div class="stat-row"><span>Ingresos cobrados este mes</span><span class="amount ing-amount">${moneyExact(ingresoMes)}</span></div>
+    <div class="stat-row"><span>Ingreso acumulado del año (define tu tasa)</span><span class="amount ing-amount">${moneyExact(ingresoAcumuladoAnio)}</span></div>
+    <div class="stat-row"><span>Tasa RESICO aplicable</span><span class="amount ing-amount">${tasaResico}%</span></div>
+    <div class="stat-row"><span>ISR causado del mes (tasa × cobrado)</span><span class="amount ing-amount">${moneyExact(isrCausadoMes)}</span></div>
+    <div class="stat-row"><span>− ISR retenido este mes (a tu favor)</span><span class="amount ing-amount">${moneyExact(isrRetenidoMes)}</span></div>
+    <div class="stat-row"><span><strong>${isrNetoAPagar >= 0 ? "ISR neto a pagar" : "ISR a favor (saldo para el próximo mes)"}</strong></span><span class="amount ing-amount ${isrNetoAPagar >= 0 ? "negative" : "positive"}"><strong>${moneyExact(Math.abs(isrNetoAPagar))}</strong></span></div>
+  `;
 
   // ---- Tabla: emitidas ----
   const emitidasOrdenadas = state.invoicesIssued.slice().sort((a, b) => (b.date || "").localeCompare(a.date || ""));
@@ -1237,11 +1287,11 @@ function renderFacturasView() {
     <tr>
       <td>${f.date || "—"}</td>
       <td class="ing-amount">${clientName(f.client_id)}</td>
-      <td>${f.folio || "—"}</td>
-      <td class="ing-amount">${money(subtotal)}</td>
-      <td class="ing-amount">${money(ivaAmount)} <span class="muted">(${f.iva_rate || 0}%)</span></td>
-      <td class="ing-amount">${money(isrAmount)} <span class="muted">(${f.isr_rate || 0}%)</span></td>
-      <td class="ing-amount">${money(total)}</td>
+      <td class="ing-amount">${f.folio || "—"}</td>
+      <td class="ing-amount">${moneyExact(subtotal)}</td>
+      <td class="ing-amount">${moneyExact(ivaAmount)} <span class="muted">(${f.iva_rate || 0}%)</span></td>
+      <td class="ing-amount">${moneyExact(isrAmount)} <span class="muted">(${f.isr_rate || 0}%)</span></td>
+      <td class="ing-amount">${moneyExact(total)}</td>
       <td><span class="invoiced-tag ${f.status === "Cobrada" ? "si" : "no"}">${f.status || "Pendiente"}</span></td>
       <td>
         <button class="btn-edit" data-id="${f.id}" data-kind="invoices_issued">Editar</button>
@@ -1261,10 +1311,10 @@ function renderFacturasView() {
     <tr>
       <td>${f.date || "—"}</td>
       <td class="ing-amount">${f.provider}</td>
-      <td>${f.folio || "—"}</td>
-      <td class="ing-amount">${money(subtotal)}</td>
-      <td class="ing-amount">${money(ivaAmount)} <span class="muted">(${f.iva_rate || 0}%)</span></td>
-      <td class="ing-amount">${money(total)}</td>
+      <td class="ing-amount">${f.folio || "—"}</td>
+      <td class="ing-amount">${moneyExact(subtotal)}</td>
+      <td class="ing-amount">${moneyExact(ivaAmount)} <span class="muted">(${f.iva_rate || 0}%)</span></td>
+      <td class="ing-amount">${moneyExact(total)}</td>
       <td><span class="invoiced-tag ${f.status === "Pagada" ? "si" : "no"}">${f.status || "Pendiente"}</span></td>
       <td>
         <button class="btn-edit" data-id="${f.id}" data-kind="invoices_received">Editar</button>
