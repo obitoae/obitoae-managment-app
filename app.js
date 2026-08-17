@@ -299,6 +299,8 @@ let state = {
   creditPayments: [],
   invoicesIssued: [],
   invoicesReceived: [],
+  incomeRules: [],
+  incomeSplits: [],
   profiles: [],
   currentUserId: null,
   currentProfile: null, // { id, email, full_name, role }
@@ -745,6 +747,8 @@ function loadAllQueries() {
     supabase.from("credit_payments").select("*").order("date", { ascending: false }),
     supabase.from("invoices_issued").select("*").order("date", { ascending: false }),
     supabase.from("invoices_received").select("*").order("date", { ascending: false }),
+    supabase.from("income_rules").select("*").order("sort_order"),
+    supabase.from("income_splits").select("*").order("date", { ascending: false }),
     supabase.from("profiles").select("*").order("full_name"),
   ];
 }
@@ -760,6 +764,8 @@ async function loadAll() {
     "credit_payments",
     "invoices_issued",
     "invoices_received",
+    "income_rules",
+    "income_splits",
     "profiles",
   ];
   let results = await Promise.all(loadAllQueries());
@@ -800,6 +806,8 @@ async function loadAll() {
     { data: creditPayments },
     { data: invoicesIssued },
     { data: invoicesReceived },
+    { data: incomeRules },
+    { data: incomeSplits },
     { data: profiles },
   ] = results;
   state.clients = clients || [];
@@ -811,6 +819,8 @@ async function loadAll() {
   state.creditPayments = creditPayments || [];
   state.invoicesIssued = invoicesIssued || [];
   state.invoicesReceived = invoicesReceived || [];
+  state.incomeRules = incomeRules || [];
+  state.incomeSplits = incomeSplits || [];
   state.profiles = profiles || [];
 }
 
@@ -851,6 +861,12 @@ function visibleInvoicesIssued() {
 function visibleInvoicesReceived() {
   return state.invoicesReceived.filter((f) => f.owner_id === viewAsUserId());
 }
+function visibleIncomeRules() {
+  return state.incomeRules.filter((r) => r.owner_id === viewAsUserId());
+}
+function visibleIncomeSplits() {
+  return state.incomeSplits.filter((s) => s.owner_id === viewAsUserId());
+}
 
 // ---- Guardar con manejo de errores: si Supabase rechaza el insert/update
 // (por ejemplo porque falta correr el SQL de esa tabla), avisa en vez de
@@ -859,11 +875,16 @@ function visibleInvoicesReceived() {
 // que las políticas de privacidad sepan que es tuyo (esto es indispensable
 // desde que existen cuentas de colaborador — sin esto, el insert lo
 // rechaza Supabase).
+// Regresa el registro guardado (con su "id") si todo salió bien, o false si
+// falló — como un objeto siempre es "truthy", el patrón de siempre
+// (`if (!ok) return;`) sigue funcionando en todos lados sin tocar nada más;
+// solo quien de verdad necesite el id (ej. para avisar por correo al crear
+// una tarea) lo usa.
 async function saveRow(table, id, row) {
   const payload = id ? row : { ...row, owner_id: state.currentUserId };
-  const { error } = id
-    ? await supabase.from(table).update(row).eq("id", id)
-    : await supabase.from(table).insert(payload);
+  const { data, error } = id
+    ? await supabase.from(table).update(row).eq("id", id).select()
+    : await supabase.from(table).insert(payload).select();
   if (error) {
     alert(
       `No se pudo guardar (tabla "${table}"): ${error.message}\n\n` +
@@ -871,7 +892,7 @@ async function saveRow(table, id, row) {
     );
     return false;
   }
-  return true;
+  return (data && data[0]) || true;
 }
 
 function renderAll() {
@@ -883,6 +904,7 @@ function renderAll() {
   renderIngresosView();
   renderGastosView();
   renderCreditoView();
+  renderRepartoView();
   renderAhorroView();
   renderFacturasView();
   renderHistoricoDetalle();
@@ -1310,6 +1332,7 @@ function resetTareaForm() {
 document.getElementById("form-tarea").addEventListener("submit", async (e) => {
   e.preventDefault();
   const id = document.getElementById("tarea-id").value;
+  const esNueva = !id;
   const row = {
     title: document.getElementById("tarea-titulo").value.trim(),
     category: document.getElementById("tarea-categoria").value,
@@ -1319,11 +1342,22 @@ document.getElementById("form-tarea").addEventListener("submit", async (e) => {
     due_date: document.getElementById("tarea-fecha").value || null,
   };
   if (!row.title) return;
-  const ok = await saveRow("tasks", id, row);
-  if (!ok) return;
+  const guardada = await saveRow("tasks", id, row);
+  if (!guardada) return;
   resetTareaForm();
   await loadAll();
   renderAll();
+
+  // Correo inmediato al crear una tarea CON fecha límite — de fondo, no
+  // bloquea nada de lo de arriba; si falla (ej. todavía no configuras el
+  // correo en Vercel), simplemente no se manda, sin afectar el guardado.
+  if (esNueva && row.due_date && guardada && guardada.id) {
+    fetch("/api/notify-task", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ task_id: guardada.id }),
+    }).catch(() => {});
+  }
 });
 
 document.getElementById("tarea-cancel-btn").addEventListener("click", resetTareaForm);
@@ -1726,6 +1760,220 @@ document.getElementById("btn-add-credito-calendar").addEventListener("click", (e
       description: `Vence el pago del corte: ${corteRangeLabel(periodo)}`,
     },
   ]);
+});
+
+// ============================================================
+// REPARTO DE INGRESOS — reglas privadas de cada quien para dividir un
+// ingreso entre gasto diario, tu tarjeta de crédito y ahorro, más una
+// calculadora que aplica la regla al momento en que te cae el dinero.
+// Como todo lo demás, se filtra por owner_id: cada quien ve solo lo suyo.
+// ============================================================
+document.getElementById("calc-fecha").value = todayISO();
+
+function saldoPendienteCorteActual() {
+  if (!creditoConfigurado()) return null;
+  const periodo = currentCorteKey();
+  return Math.max(0, totalCorte(periodo) - pagadoCorte(periodo));
+}
+
+function tipoReglaLabel(r) {
+  return r.kind === "tarjeta" ? "Cubrir % de tarjeta" : "% a ahorro";
+}
+
+function detalleRegla(r) {
+  if (r.kind === "tarjeta") {
+    return `Cubre ${Number(r.card_percent) || 0}% del saldo pendiente de tu tarjeta, resto a gasto diario`;
+  }
+  const ahorro = Number(r.savings_percent) || 0;
+  return `${ahorro}% a ahorro, ${100 - ahorro}% a gasto diario`;
+}
+
+function resetReglaForm() {
+  document.getElementById("form-regla-reparto").reset();
+  document.getElementById("regla-id").value = "";
+  document.getElementById("regla-submit-btn").textContent = "Agregar regla";
+  document.getElementById("regla-cancel-btn").hidden = true;
+  aplicarTipoReglaUI();
+}
+
+function aplicarTipoReglaUI() {
+  const esTarjeta = document.getElementById("regla-tipo").value === "tarjeta";
+  document.getElementById("regla-percent-wrap").hidden = esTarjeta;
+  document.getElementById("regla-tarjeta-wrap").hidden = !esTarjeta;
+}
+document.getElementById("regla-tipo").addEventListener("change", aplicarTipoReglaUI);
+
+function renderReglasReparto() {
+  const reglas = visibleIncomeRules()
+    .slice()
+    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0) || (a.name || "").localeCompare(b.name || ""));
+
+  document.getElementById("tabla-reglas-reparto").innerHTML =
+    reglas
+      .map(
+        (r) => `
+    <tr>
+      <td>${r.name}</td>
+      <td>${tipoReglaLabel(r)}</td>
+      <td>${detalleRegla(r)}</td>
+      <td class="ing-amount">${r.expected_amount ? money(r.expected_amount) : "—"}</td>
+      <td>
+        <button class="btn-edit" data-id="${r.id}" data-kind="income_rules">Editar</button>
+        <button class="btn-delete" data-id="${r.id}" data-kind="income_rules">Eliminar</button>
+      </td>
+    </tr>`
+      )
+      .join("") || `<tr><td colspan="5" class="muted">Todavía no tienes reglas — agrega una abajo, o usa "Cargar reglas de ejemplo".</td></tr>`;
+
+  const selectCalc = document.getElementById("calc-regla");
+  const valorPrevio = selectCalc.value;
+  selectCalc.innerHTML =
+    reglas.length
+      ? reglas.map((r) => `<option value="${r.id}">${r.name}</option>`).join("")
+      : `<option value="">— Agrega una regla primero —</option>`;
+  if (reglas.some((r) => r.id === valorPrevio)) selectCalc.value = valorPrevio;
+}
+
+function renderHistoricoReparto() {
+  const historico = visibleIncomeSplits()
+    .slice()
+    .sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.created_at || "").localeCompare(a.created_at || ""));
+
+  document.getElementById("tabla-historico-reparto").innerHTML =
+    historico
+      .map(
+        (h) => `
+    <tr>
+      <td>${h.date || "—"}</td>
+      <td>${h.rule_name}</td>
+      <td class="ing-amount">${money(h.amount)}</td>
+      <td class="ing-amount">${money(h.expense_amount)}</td>
+      <td class="ing-amount">${money(h.card_amount)}</td>
+      <td class="ing-amount">${money(h.savings_amount)}</td>
+      <td><button class="btn-delete" data-id="${h.id}" data-kind="income_splits">Eliminar</button></td>
+    </tr>`
+      )
+      .join("") || `<tr><td colspan="7" class="muted">Todavía no has registrado ningún reparto.</td></tr>`;
+}
+
+function renderRepartoView() {
+  renderReglasReparto();
+  renderHistoricoReparto();
+}
+
+document.getElementById("form-regla-reparto").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = document.getElementById("regla-id").value;
+  const kind = document.getElementById("regla-tipo").value === "tarjeta" ? "tarjeta" : "percent";
+  const row = {
+    name: document.getElementById("regla-nombre").value.trim(),
+    kind,
+    savings_percent: kind === "percent" ? Number(document.getElementById("regla-savings-percent").value || 0) : null,
+    card_percent: kind === "tarjeta" ? Number(document.getElementById("regla-card-percent").value || 0) : null,
+    expected_amount: document.getElementById("regla-monto-esperado").value
+      ? Number(document.getElementById("regla-monto-esperado").value)
+      : null,
+  };
+  if (!row.name) return;
+  const guardada = await saveRow("income_rules", id, row);
+  if (!guardada) return;
+  resetReglaForm();
+  await loadAll();
+  renderAll();
+});
+
+document.getElementById("regla-cancel-btn").addEventListener("click", resetReglaForm);
+
+document.getElementById("btn-cargar-reglas-ejemplo").addEventListener("click", async () => {
+  if (viewAsUserId() !== state.currentUserId) return;
+  if (
+    visibleIncomeRules().length &&
+    !confirm("Ya tienes reglas guardadas — ¿agregar estas 4 de ejemplo de todas formas? (puedes editarlas o borrarlas después)")
+  ) {
+    return;
+  }
+  const ejemplo = [
+    { name: "DNM - primera quincena", kind: "tarjeta", card_percent: 50, expected_amount: 8000, sort_order: 1 },
+    { name: "DNM - segunda quincena", kind: "tarjeta", card_percent: 50, expected_amount: 8000, sort_order: 2 },
+    { name: "Forasté", kind: "percent", savings_percent: 30, expected_amount: 7000, sort_order: 3 },
+    { name: "WeDo Brokers", kind: "percent", savings_percent: 100, expected_amount: 4000, sort_order: 4 },
+    { name: "Yerman (variable)", kind: "percent", savings_percent: 100, expected_amount: null, sort_order: 5 },
+  ];
+  for (const regla of ejemplo) {
+    await saveRow("income_rules", "", regla);
+  }
+  await loadAll();
+  renderAll();
+});
+
+document.getElementById("calc-regla").addEventListener("change", (e) => {
+  const regla = state.incomeRules.find((r) => r.id === e.target.value);
+  const montoInput = document.getElementById("calc-monto");
+  if (regla && regla.expected_amount && !montoInput.value) {
+    montoInput.value = regla.expected_amount;
+  }
+});
+
+document.getElementById("form-calc-reparto").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const reglaId = document.getElementById("calc-regla").value;
+  const regla = state.incomeRules.find((r) => r.id === reglaId);
+  const resultadoEl = document.getElementById("calc-resultado");
+  if (!regla) {
+    alert("Elige una regla primero (o crea una en el panel de arriba).");
+    return;
+  }
+  const monto = Number(document.getElementById("calc-monto").value || 0);
+  if (!monto) return;
+
+  let savingsAmount = 0;
+  let cardAmount = 0;
+  let expenseAmount = 0;
+  let notaTarjeta = "";
+
+  if (regla.kind === "tarjeta") {
+    const saldoPendiente = saldoPendienteCorteActual();
+    if (saldoPendiente === null) {
+      resultadoEl.hidden = false;
+      resultadoEl.className = "alert-box alert-warn";
+      resultadoEl.innerHTML = `Esta regla necesita que primero configures el día de corte y de pago de tu tarjeta en "Mi perfil" — mientras tanto no puedo calcular el saldo pendiente.`;
+      return;
+    }
+    const objetivo = saldoPendiente * ((Number(regla.card_percent) || 0) / 100);
+    cardAmount = Math.min(monto, objetivo);
+    expenseAmount = monto - cardAmount;
+    if (objetivo > monto) {
+      notaTarjeta = ` (el ${regla.card_percent}% del saldo pendiente, ${money(objetivo)}, es mayor a lo recibido — se usó todo lo recibido para la tarjeta)`;
+    }
+  } else {
+    savingsAmount = monto * ((Number(regla.savings_percent) || 0) / 100);
+    expenseAmount = monto - savingsAmount;
+  }
+
+  resultadoEl.hidden = false;
+  resultadoEl.className = "alert-box alert-ok";
+  resultadoEl.innerHTML = `
+    <div class="inicio-alert-title">Reparto de ${money(monto)} — ${regla.name}</div>
+    <div class="stat-list">
+      <div class="stat-row"><span>Gasto diario</span><span class="amount ing-amount">${money(expenseAmount)}</span></div>
+      ${cardAmount ? `<div class="stat-row"><span>Tarjeta de crédito${notaTarjeta}</span><span class="amount ing-amount">${money(cardAmount)}</span></div>` : ""}
+      ${savingsAmount ? `<div class="stat-row"><span>Ahorro (Nu Turbo)</span><span class="amount ing-amount">${money(savingsAmount)}</span></div>` : ""}
+    </div>
+  `;
+
+  const guardado = await saveRow("income_splits", "", {
+    rule_id: regla.id,
+    rule_name: regla.name,
+    date: document.getElementById("calc-fecha").value || todayISO(),
+    amount: monto,
+    savings_amount: savingsAmount,
+    card_amount: cardAmount,
+    expense_amount: expenseAmount,
+  });
+  if (guardado) {
+    await loadAll();
+    renderHistoricoReparto();
+  }
 });
 
 // ============================================================
@@ -2174,6 +2422,20 @@ document.addEventListener("click", (e) => {
     document.getElementById("pago-credito-cancel-btn").hidden = false;
     switchView("credito");
     document.getElementById("form-pago-credito").scrollIntoView({ behavior: "smooth", block: "center" });
+  } else if (kind === "income_rules") {
+    const r = state.incomeRules.find((x) => x.id === id);
+    if (!r) return;
+    document.getElementById("regla-id").value = r.id;
+    document.getElementById("regla-nombre").value = r.name;
+    document.getElementById("regla-tipo").value = r.kind === "tarjeta" ? "tarjeta" : "percent";
+    document.getElementById("regla-savings-percent").value = r.savings_percent ?? "";
+    document.getElementById("regla-card-percent").value = r.card_percent ?? "";
+    document.getElementById("regla-monto-esperado").value = r.expected_amount ?? "";
+    aplicarTipoReglaUI();
+    document.getElementById("regla-submit-btn").textContent = "Guardar cambios";
+    document.getElementById("regla-cancel-btn").hidden = false;
+    switchView("reparto");
+    document.getElementById("form-regla-reparto").scrollIntoView({ behavior: "smooth", block: "center" });
   } else if (kind === "invoices_issued") {
     const f = state.invoicesIssued.find((x) => x.id === id);
     if (!f) return;

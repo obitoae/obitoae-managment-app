@@ -113,6 +113,7 @@
           <button class="nav-item nav-subitem" data-view="gastos">Gastos</button>
           <button class="nav-item nav-subitem nav-business-only" data-view="facturas">Facturas</button>
           <button class="nav-item nav-subitem" data-view="credito">Tarjeta de crédito</button>
+          <button class="nav-item nav-subitem" data-view="reparto">Reparto de ingresos</button>
           <button class="nav-item nav-subitem nav-business-only" data-view="ahorro">Ahorro</button>
           <button class="nav-item nav-subitem nav-business-only" data-view="historico">Histórico</button>
         </div>
@@ -747,6 +748,70 @@
         </table>
         </div>
       </div>
+      </div>
+    </section>
+
+    <!-- ---------- REPARTO DE INGRESOS (privado, cada quien el suyo) ---------- -->
+    <section id="view-reparto" class="view" hidden>
+      <header class="view-header">
+        <h2>Reparto de ingresos</h2>
+        <p class="muted">Reglas para dividir cada ingreso entre gasto diario, tu tarjeta de crédito y ahorro — y una calculadora para aplicarlas al momento en que te cae el dinero. Todo esto es privado: solo tú lo ves, nadie más en la cuenta.</p>
+      </header>
+
+      <div class="panel solo-lectura-otro">
+        <div class="panel-header-row">
+          <h3>Tus reglas</h3>
+          <button type="button" id="btn-cargar-reglas-ejemplo" class="btn-edit">Cargar reglas de ejemplo (DNM / Forasté / WeDo / Yerman)</button>
+        </div>
+        <p class="muted" style="margin-top:-6px;">Cada regla es "% a ahorro, resto a gasto", o "cubrir % del saldo pendiente de mi tarjeta de crédito, resto a gasto". El botón de arriba te deja 4 reglas ya armadas como ejemplo — edítalas o bórralas como quieras.</p>
+        <div class="table-scroll">
+        <table class="data-table">
+          <thead><tr><th>Nombre</th><th>Tipo</th><th>Detalle</th><th>Monto esperado</th><th></th></tr></thead>
+          <tbody id="tabla-reglas-reparto"></tbody>
+        </table>
+        </div>
+
+        <form id="form-regla-reparto" class="form-grid" style="margin-top:18px;">
+          <input type="hidden" id="regla-id">
+          <div><label>Nombre</label><input type="text" id="regla-nombre" placeholder="Ej. DNM - primera quincena" required></div>
+          <div><label>Tipo de reparto</label>
+            <select id="regla-tipo">
+              <option value="percent">% a ahorro, resto a gasto</option>
+              <option value="tarjeta">Cubrir % del saldo pendiente de mi tarjeta, resto a gasto</option>
+            </select>
+          </div>
+          <div id="regla-percent-wrap"><label>% que va a ahorro</label><input type="number" id="regla-savings-percent" min="0" max="100" step="1" placeholder="Ej. 30"></div>
+          <div id="regla-tarjeta-wrap" hidden><label>% del saldo pendiente que cubre</label><input type="number" id="regla-card-percent" min="0" max="100" step="1" placeholder="Ej. 50"></div>
+          <div><label>Monto esperado (opcional)</label><input type="number" id="regla-monto-esperado" step="0.01" placeholder="Para prellenar la calculadora"></div>
+          <div class="form-actions">
+            <button type="submit" id="regla-submit-btn" class="btn btn-primary">Agregar regla</button>
+            <button type="button" id="regla-cancel-btn" class="btn-cancel-edit" hidden>Cancelar edición</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="panel solo-lectura-otro">
+        <h3>Calculadora — ¿cuánto te acaba de caer?</h3>
+        <p class="muted" style="margin-top:-6px;">Elige la regla, pon el monto que te cayó, y te digo al momento cómo repartirlo.</p>
+        <form id="form-calc-reparto" class="form-grid">
+          <div><label>Regla</label><select id="calc-regla" required></select></div>
+          <div><label>Monto recibido</label><input type="number" id="calc-monto" step="0.01" required></div>
+          <div><label>Fecha</label><input type="date" id="calc-fecha"></div>
+          <div class="form-actions">
+            <button type="submit" id="calc-submit-btn" class="btn btn-primary">Calcular y registrar</button>
+          </div>
+        </form>
+        <div id="calc-resultado" class="alert-box alert-ok" style="margin-top:16px;" hidden></div>
+      </div>
+
+      <div class="panel">
+        <h3>Histórico de repartos</h3>
+        <div class="table-scroll">
+        <table class="data-table">
+          <thead><tr><th>Fecha</th><th>Regla</th><th>Monto</th><th>Gasto diario</th><th>Tarjeta</th><th>Ahorro</th><th></th></tr></thead>
+          <tbody id="tabla-historico-reparto"></tbody>
+        </table>
+        </div>
       </div>
     </section>
 
