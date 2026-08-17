@@ -181,6 +181,75 @@ function corteRangeLabel(periodKey) {
   return `Corte del ${inicio} de ${MESES_ES[prevMonth - 1]} al ${corteDay} de ${MESES_ES[m - 1]} ${y}`;
 }
 
+// ============================================================
+// APARIENCIA: color de acento + modo claro/oscuro, por persona
+// (se guarda en el perfil de cada quien — ver "Mi perfil")
+// ============================================================
+const DEFAULT_ACCENT = "#a0bb37";
+
+function hexToRgb(hex) {
+  let h = String(hex || "").replace("#", "").trim();
+  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+  if (!/^[0-9a-fA-F]{6}$/.test(h)) h = "a0bb37";
+  const n = parseInt(h, 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+function rgbToHex(r, g, b) {
+  const c = (v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0");
+  return `#${c(r)}${c(g)}${c(b)}`;
+}
+
+// Mezcla dos colores hex. ratio 0 = colorA puro, 1 = colorB puro.
+function mixHex(colorA, colorB, ratio) {
+  const a = hexToRgb(colorA);
+  const b = hexToRgb(colorB);
+  return rgbToHex(a.r + (b.r - a.r) * ratio, a.g + (b.g - a.g) * ratio, a.b + (b.b - a.b) * ratio);
+}
+
+// Luminancia relativa (WCAG) — para decidir si el texto sobre un color de
+// acento debe ser negro o blanco, sin importar qué color haya elegido cada
+// quien (para que siempre se pueda leer).
+function relativeLuminance(hex) {
+  const { r, g, b } = hexToRgb(hex);
+  const chan = [r, g, b].map((v) => {
+    v /= 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * chan[0] + 0.7152 * chan[1] + 0.0722 * chan[2];
+}
+
+function onAccentColor(hex) {
+  return relativeLuminance(hex) > 0.42 ? "#1b1b1a" : "#ffffff";
+}
+
+const THEME_MODE_TOKENS = {
+  light: { bodyBg: "#f9fbf6", cardBg: "#ffffff", inputBg: "#ffffff", text: "#1b1b1a", muted: "#74786a", border: "#e3e6da" },
+  dark: { bodyBg: "#171712", cardBg: "#222218", inputBg: "#2a2a1f", text: "#f2f1ea", muted: "#a6a996", border: "#3a3a2e" },
+};
+
+// Recalcula y aplica las variables CSS de color según el perfil actual (o
+// los defaults de marca si todavía no hay nadie conectado). Se llama cada
+// vez que cargamos o guardamos el perfil.
+function applyTheme() {
+  const perfil = state.currentProfile || {};
+  const accent = /^#[0-9a-fA-F]{6}$/.test(perfil.theme_color || "") ? perfil.theme_color : DEFAULT_ACCENT;
+  const mode = perfil.theme_mode === "dark" ? "dark" : "light";
+  const tokens = THEME_MODE_TOKENS[mode];
+
+  const root = document.documentElement.style;
+  root.setProperty("--green", accent);
+  root.setProperty("--green-soft", mixHex(accent, "#ffffff", 0.25));
+  root.setProperty("--green-bg", mode === "dark" ? mixHex(accent, tokens.cardBg, 0.78) : mixHex(accent, "#ffffff", 0.85));
+  root.setProperty("--on-accent", onAccentColor(accent));
+  root.setProperty("--body-bg", tokens.bodyBg);
+  root.setProperty("--card-bg", tokens.cardBg);
+  root.setProperty("--input-bg", tokens.inputBg);
+  root.setProperty("--text", tokens.text);
+  root.setProperty("--muted", tokens.muted);
+  root.setProperty("--border", tokens.border);
+}
+
 let state = {
   clients: [],
   income: [],
@@ -234,6 +303,7 @@ async function loadCurrentProfile() {
 
   const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle();
   state.currentProfile = profile || { id: user.id, email: user.email, full_name: null, role: "member" };
+  applyTheme();
 
   const nombre = state.currentProfile.full_name || state.currentProfile.email || "";
 
@@ -395,6 +465,7 @@ document.getElementById("logout-btn").addEventListener("click", async () => {
   await supabase.auth.signOut();
   state.currentUserId = null;
   state.currentProfile = null;
+  applyTheme();
   const infoEl = document.getElementById("user-info");
   if (infoEl) infoEl.hidden = true;
   if (typeof refreshPrivacyUI === "function") refreshPrivacyUI();
@@ -407,6 +478,22 @@ document.getElementById("logout-btn").addEventListener("click", async () => {
 const perfilModal = document.getElementById("perfil-modal");
 const perfilRegimenWrap = document.getElementById("perfil-regimen-wrap");
 const perfilCreditoWrap = document.getElementById("perfil-credito-wrap");
+const perfilColorInput = document.getElementById("perfil-color");
+const perfilColorCustom = document.getElementById("perfil-color-custom");
+const perfilColorSwatches = document.querySelectorAll("#perfil-color-swatches .color-swatch");
+
+function setPerfilColorSeleccionado(hex) {
+  perfilColorInput.value = hex;
+  perfilColorCustom.value = /^#[0-9a-fA-F]{6}$/.test(hex) ? hex : DEFAULT_ACCENT;
+  perfilColorSwatches.forEach((btn) => {
+    btn.classList.toggle("selected", btn.dataset.color.toLowerCase() === hex.toLowerCase());
+  });
+}
+
+perfilColorSwatches.forEach((btn) => {
+  btn.addEventListener("click", () => setPerfilColorSeleccionado(btn.dataset.color));
+});
+perfilColorCustom.addEventListener("input", () => setPerfilColorSeleccionado(perfilColorCustom.value));
 
 document.getElementById("user-info").addEventListener("click", () => {
   if (!state.currentProfile) return;
@@ -417,6 +504,8 @@ document.getElementById("user-info").addEventListener("click", () => {
   document.getElementById("perfil-isr-default").value = state.currentProfile.default_isr_rate ?? "";
   document.getElementById("perfil-corte-dia").value = state.currentProfile.credit_cutoff_day ?? "";
   document.getElementById("perfil-pago-dia").value = state.currentProfile.credit_due_day ?? "";
+  setPerfilColorSeleccionado(state.currentProfile.theme_color || DEFAULT_ACCENT);
+  document.getElementById("perfil-tema-modo").value = state.currentProfile.theme_mode === "dark" ? "dark" : "light";
   // El régimen fiscal / tasas de factura y la tarjeta de crédito solo
   // aplican a quien factura o gasta en el negocio (dueño y colaboradores)
   // — un cliente no necesita configurar esto.
@@ -451,6 +540,8 @@ document.getElementById("form-perfil").addEventListener("submit", async (e) => {
     credit_due_day: document.getElementById("perfil-pago-dia").value
       ? Number(document.getElementById("perfil-pago-dia").value)
       : null,
+    theme_color: /^#[0-9a-fA-F]{6}$/.test(perfilColorInput.value) ? perfilColorInput.value : null,
+    theme_mode: document.getElementById("perfil-tema-modo").value === "dark" ? "dark" : "light",
   };
 
   const { error } = await supabase.from("profiles").update(update).eq("id", state.currentUserId);
@@ -913,7 +1004,7 @@ function tareaCardHTML(t) {
       </div>
       <div class="kanban-card-actions">
         ${moveButtons.join("")}
-        ${t.due_date && t.status !== "Hecho" ? `<button class="btn-calendar" data-id="${t.id}" data-kind="task">📅 Calendario</button>` : ""}
+        ${t.due_date && t.status !== "Hecho" && t.owner_id === state.currentUserId ? `<button class="btn-calendar" data-id="${t.id}" data-kind="task">📅 Calendario</button>` : ""}
         <button class="btn-edit" data-id="${t.id}" data-kind="tasks">Editar</button>
         <button class="btn-delete" data-id="${t.id}" data-kind="tasks">Eliminar</button>
       </div>
@@ -1227,10 +1318,16 @@ document.getElementById("gasto-cancel-btn").addEventListener("click", resetGasto
 // ============================================================
 document.getElementById("pago-credito-fecha").value = todayISO();
 
+// La tarjeta de crédito es personal — aunque como dueño veas todo lo demás
+// del negocio, aquí cada quien (tú incluido) solo ve y agrega a su propio
+// calendario los gastos y pagos de SU tarjeta, nunca los de otra persona.
 function gastosCreditoDelCorte(periodKey) {
   if (!periodKey) return []; // sin corte configurado, no hay nada que agrupar
   return state.expenses.filter(
-    (g) => g.payment_method === "Tarjeta de crédito" && cortePeriodKey(g.date) === periodKey
+    (g) =>
+      g.payment_method === "Tarjeta de crédito" &&
+      g.owner_id === state.currentUserId &&
+      cortePeriodKey(g.date) === periodKey
   );
 }
 
@@ -1241,16 +1338,19 @@ function totalCorte(periodKey) {
 function pagadoCorte(periodKey) {
   if (!periodKey) return 0;
   return state.creditPayments
-    .filter((p) => p.period_key === periodKey)
+    .filter((p) => p.period_key === periodKey && p.owner_id === state.currentUserId)
     .reduce((s, p) => s + Number(p.amount || 0), 0);
 }
 
 function allCortePeriods() {
   const keys = new Set([currentCorteKey()]);
   state.expenses.forEach((g) => {
-    if (g.payment_method === "Tarjeta de crédito" && g.date) keys.add(cortePeriodKey(g.date));
+    if (g.payment_method === "Tarjeta de crédito" && g.owner_id === state.currentUserId && g.date)
+      keys.add(cortePeriodKey(g.date));
   });
-  state.creditPayments.forEach((p) => keys.add(p.period_key));
+  state.creditPayments.forEach((p) => {
+    if (p.owner_id === state.currentUserId) keys.add(p.period_key);
+  });
   return Array.from(keys).sort((a, b) => b.localeCompare(a));
 }
 
@@ -1302,6 +1402,7 @@ function renderCreditoView() {
 
   document.getElementById("tabla-pagos-credito").innerHTML =
     state.creditPayments
+      .filter((p) => p.owner_id === state.currentUserId)
       .slice()
       .sort((a, b) => b.date.localeCompare(a.date))
       .map(

@@ -131,6 +131,29 @@
           <input type="number" id="perfil-pago-dia" min="1" max="31" placeholder="ej. 5">
         </div>
 
+        <div id="perfil-apariencia-wrap">
+          <label>Color de acento</label>
+          <div class="color-swatch-row" id="perfil-color-swatches">
+            <button type="button" class="color-swatch" data-color="#a0bb37" style="background:#a0bb37" title="Verde (original)"></button>
+            <button type="button" class="color-swatch" data-color="#4ea8de" style="background:#4ea8de" title="Azul"></button>
+            <button type="button" class="color-swatch" data-color="#b48ce0" style="background:#b48ce0" title="Morado"></button>
+            <button type="button" class="color-swatch" data-color="#f28fb0" style="background:#f28fb0" title="Rosa"></button>
+            <button type="button" class="color-swatch" data-color="#f2a154" style="background:#f2a154" title="Naranja"></button>
+            <button type="button" class="color-swatch" data-color="#4fd1c5" style="background:#4fd1c5" title="Turquesa"></button>
+            <button type="button" class="color-swatch" data-color="#e8c547" style="background:#e8c547" title="Amarillo"></button>
+            <button type="button" class="color-swatch" data-color="#f2775a" style="background:#f2775a" title="Coral"></button>
+            <input type="color" id="perfil-color-custom" class="color-swatch-custom" value="#a0bb37" title="Elige cualquier color">
+          </div>
+          <input type="hidden" id="perfil-color">
+          <p class="muted" style="margin-top:4px;">Elige uno de los colores, o el círculo de la derecha para poner el tuyo. Se aplica a botones, resaltados y montos.</p>
+
+          <label>Modo</label>
+          <select id="perfil-tema-modo">
+            <option value="light">Claro</option>
+            <option value="dark">Oscuro</option>
+          </select>
+        </div>
+
         <div id="perfil-regimen-wrap">
           <label>Régimen fiscal</label>
           <select id="perfil-regimen">

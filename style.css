@@ -1,12 +1,18 @@
 :root {
-  /* Paleta de marca — Obitoae Management */
-  --dark: #1b1b1a;         /* Negro */
+  /* Paleta de marca — Obitoae Management. --green, --green-soft, --green-bg
+     (el color de acento) y --body-bg/--card-bg/--text/--muted/--border (modo
+     claro/oscuro) se sobreescriben en tiempo real por persona, según lo que
+     cada quien configure en "Mi perfil" — ver applyTheme() en app.js. Estos
+     valores son solo el default antes de saber quién entró. */
+  --dark: #1b1b1a;         /* Negro — barra lateral / login, siempre fijo */
   --dark-2: #262622;
-  --green: #a0bb37;        /* Verde principal */
+  --green: #a0bb37;        /* Verde principal (acento) */
   --green-soft: #b6cc5c;
   --green-bg: #e7edcf;     /* Verde claro para fondos */
+  --on-accent: #1b1b1a;    /* color de texto sobre fondos de acento — se recalcula según qué tan clara/oscura sea la elegida */
   --body-bg: #f9fbf6;      /* Blanco hueso */
   --card-bg: #ffffff;
+  --input-bg: #ffffff;     /* fondo de los campos de formulario — cambia en modo oscuro */
   --text: #1b1b1a;
   --muted: #74786a;        /* Gris complementario */
   --border: #e3e6da;
@@ -44,7 +50,7 @@ input:focus, select:focus, textarea:focus {
 .btn-loading { position: relative; color: transparent !important; pointer-events: none; }
 .btn-loading::after {
   content: ""; position: absolute; top: 50%; left: 50%; width: 16px; height: 16px;
-  margin: -8px 0 0 -8px; border: 2px solid rgba(27,27,26,0.35); border-top-color: var(--dark);
+  margin: -8px 0 0 -8px; border: 2px solid rgba(27,27,26,0.35); border-top-color: var(--on-accent);
   border-radius: 50%; animation: spin 0.6s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -112,7 +118,7 @@ input, select, button { font-family: var(--font-body); }
 }
 .cover-sub { color: #8d9180; font-size: 14px; margin: 10px 0 30px; font-family: var(--font-body); }
 .btn-cover-ingresar {
-  background: var(--green); color: var(--dark); border: none; border-radius: 30px;
+  background: var(--green); color: var(--on-accent); border: none; border-radius: 30px;
   padding: 15px 52px; font-size: 15px; font-weight: bold; letter-spacing: 0.06em;
   cursor: pointer; font-family: var(--font-body); transition: background 0.15s ease, transform 0.15s ease;
 }
@@ -142,7 +148,7 @@ input, select, button { font-family: var(--font-body); }
   border-radius: 6px; cursor: pointer; font-size: 14px; font-family: var(--font-body);
 }
 .nav-item:hover { background: #2f2f29; }
-.nav-item.active { background: var(--green); color: var(--dark); font-weight: bold; }
+.nav-item.active { background: var(--green); color: var(--on-accent); font-weight: bold; }
 
 /* ---------------- Sidebar: carpetas (grupos con sub-items) ---------------- */
 .nav-group { display: flex; flex-direction: column; margin-top: 4px; }
@@ -172,7 +178,7 @@ input, select, button { font-family: var(--font-body); }
 .user-info:hover { border-color: #43433c; color: #fff; }
 .user-info .user-role-tag {
   font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; font-weight: bold;
-  padding: 2px 6px; border-radius: 4px; background: var(--green); color: var(--dark);
+  padding: 2px 6px; border-radius: 4px; background: var(--green); color: var(--on-accent);
 }
 .user-info .user-role-tag.member { background: #43433c; color: #e3e6da; }
 .user-info .user-role-tag.client { background: #4a6fa5; color: #fff; }
@@ -191,9 +197,23 @@ input, select, button { font-family: var(--font-body); }
 .modal-card label { display: block; font-size: 12px; color: var(--muted); margin: 14px 0 4px; }
 .modal-card input, .modal-card select {
   width: 100%; padding: 10px 12px; border-radius: 6px; border: 1px solid var(--border);
-  font-size: 14px; font-family: var(--font-body); background: #fff;
+  font-size: 14px; font-family: var(--font-body); background: var(--input-bg); color: var(--text);
 }
 .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+
+.color-swatch-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 6px; }
+.color-swatch {
+  width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;
+  padding: 0; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12);
+}
+.color-swatch:hover { transform: scale(1.1); }
+.color-swatch.selected { border-color: var(--text); box-shadow: 0 0 0 2px var(--card-bg), 0 0 0 4px var(--text); }
+.color-swatch-custom {
+  width: 28px; height: 28px; border-radius: 50%; border: none; padding: 0; cursor: pointer;
+  background: none; overflow: hidden;
+}
+.color-swatch-custom::-webkit-color-swatch-wrapper { padding: 0; border-radius: 50%; }
+.color-swatch-custom::-webkit-color-swatch { border: 2px solid #fff; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12); }
 
 .main { flex: 1; padding: 32px 40px; max-width: 1200px; }
 .view-header { margin-bottom: 24px; }
@@ -206,7 +226,7 @@ input, select, button { font-family: var(--font-body); }
 .kpi-card { background: var(--green-bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; }
 .kpi-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.07); transform: translateY(-2px); }
 .kpi-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; font-family: var(--font-body); }
-.kpi-value { font-size: 26px; font-family: var(--font-display); color: var(--dark); letter-spacing: 0.02em; }
+.kpi-value { font-size: 26px; font-family: var(--font-display); color: var(--text); letter-spacing: 0.02em; }
 
 .alert-box {
   background: var(--red-bg); color: #8a3b24; border-radius: 8px; padding: 14px 18px;
@@ -245,6 +265,7 @@ input, select, button { font-family: var(--font-body); }
 .form-grid label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; font-family: var(--font-body); }
 .form-grid input, .form-grid select, .form-inline input {
   width: 100%; padding: 9px 10px; border-radius: 6px; border: 1px solid var(--border); font-size: 14px; font-family: var(--font-body);
+  background: var(--input-bg); color: var(--text);
 }
 .checkbox-row { display: flex; align-items: center; }
 .checkbox-row label { font-size: 13px; color: var(--text); display: flex; align-items: center; gap: 6px; font-family: var(--font-body); }
@@ -254,7 +275,7 @@ input, select, button { font-family: var(--font-body); }
   border: none; border-radius: 6px; padding: 10px 18px; font-size: 14px; cursor: pointer; font-weight: bold;
   font-family: var(--font-body);
 }
-.btn-primary { background: var(--green); color: var(--dark); }
+.btn-primary { background: var(--green); color: var(--on-accent); }
 .btn-primary:hover { background: var(--green-soft); }
 .btn-block { width: 100%; margin-top: 22px; }
 .btn-delete {
@@ -266,7 +287,7 @@ input, select, button { font-family: var(--font-body); }
   background: none; border: none; color: #5c7a1f; cursor: pointer; font-size: 12px; text-decoration: underline;
   font-family: var(--font-body); margin-right: 10px;
 }
-.btn-edit:hover { color: var(--dark); }
+.btn-edit:hover { color: var(--text); }
 .btn-cancel-edit {
   background: none; border: none; color: var(--red); cursor: pointer; font-size: 13px; text-decoration: underline;
   font-family: var(--font-body); margin-left: 14px;
@@ -276,7 +297,7 @@ input, select, button { font-family: var(--font-body); }
   background: var(--green-bg); border: 1px solid var(--green); color: #4b5a1f; cursor: pointer;
   font-size: 12px; font-weight: bold; border-radius: 6px; padding: 5px 10px; font-family: var(--font-body);
 }
-.btn-calendar:hover { background: var(--green-soft); color: var(--dark); }
+.btn-calendar:hover { background: var(--green-soft); color: var(--on-accent); }
 .panel-header-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
 .panel-header-row h3 { margin-bottom: 0; }
 /* ---------------- Tareas: prioridad y vencimiento ---------------- */
@@ -340,6 +361,7 @@ input, select, button { font-family: var(--font-body); }
 .eur-helper-row label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; font-family: var(--font-body); }
 .eur-helper-row input {
   width: 100%; padding: 9px 10px; border-radius: 6px; border: 1px solid var(--border); font-size: 14px; font-family: var(--font-body);
+  background: var(--input-bg); color: var(--text);
 }
 .eur-helper .muted { margin-top: 8px; }
 .eur-helper-actions { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
