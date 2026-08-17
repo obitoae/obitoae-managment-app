@@ -346,6 +346,37 @@ async function loadCurrentProfile() {
   // Ahora que ya sabemos si tiene contraseña de privacidad propia, mostramos
   // (o no) el botón de ocultar montos.
   if (typeof refreshPrivacyUI === "function") refreshPrivacyUI();
+
+  applyAccountTypeUI();
+}
+
+// ============================================================
+// TIPO DE CUENTA: "empresarial" (todo el sistema, con clientes/facturación)
+// o "personal" (versión sencilla, solo organización propia — sin clientes ni
+// facturación). Se elige al registrarse y se puede cambiar luego desde
+// "Mi perfil". Aquí solo ajustamos qué se ve — los datos de cada quien ya
+// están aislados por owner_id sin importar el tipo de cuenta.
+// ============================================================
+function applyAccountTypeUI() {
+  const isPersonal = !!state.currentProfile && state.currentProfile.account_type === "personal";
+
+  document.querySelectorAll(".nav-business-only").forEach((el) => {
+    el.hidden = isPersonal;
+  });
+  document.querySelectorAll(".gasto-business-only").forEach((el) => {
+    el.hidden = isPersonal;
+  });
+
+  // Si el tipo de cuenta ya no incluye la vista en la que estabas parado
+  // (por ejemplo, cambiaste de "empresarial" a "personal" mientras veías
+  // Facturas), regresamos a Inicio para no dejar una pantalla vacía.
+  if (isPersonal) {
+    const vistasSoloEmpresariales = ["view-dashboard", "view-clientes", "view-ingresos", "view-facturas", "view-ahorro", "view-historico"];
+    const vistaActiva = document.querySelector(".view:not([hidden])");
+    if (vistaActiva && vistasSoloEmpresariales.includes(vistaActiva.id) && typeof switchView === "function") {
+      switchView("inicio");
+    }
+  }
 }
 
 // Portada: efecto de entrada letra por letra para el nombre — se reconstruye
@@ -447,11 +478,22 @@ btnShowLogin.addEventListener("click", () => {
   btnShowSignup.hidden = false;
 });
 
+// ---- Tipo de cuenta al registrarse (empresarial / personal) ----
+const signupAccountTypeInput = document.getElementById("signup-account-type");
+document.querySelectorAll("#signup-account-type-row .account-type-card").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("#signup-account-type-row .account-type-card").forEach((b) => b.classList.remove("selected"));
+    btn.classList.add("selected");
+    signupAccountTypeInput.value = btn.dataset.type;
+  });
+});
+
 signupFormEl.addEventListener("submit", async (e) => {
   e.preventDefault();
   const fullName = document.getElementById("signup-name").value.trim();
   const email = document.getElementById("signup-email").value.trim();
   const password = document.getElementById("signup-password").value;
+  const accountType = signupAccountTypeInput.value === "personal" ? "personal" : "empresarial";
   const errEl = document.getElementById("signup-error");
   const okEl = document.getElementById("signup-success");
   errEl.hidden = true;
@@ -459,12 +501,13 @@ signupFormEl.addEventListener("submit", async (e) => {
 
   const submitBtn = document.querySelector("#signup-form button[type='submit']");
   if (submitBtn) submitBtn.classList.add("btn-loading");
-  // El nombre viaja como metadato del registro — el trigger de Supabase lo
-  // guarda solo en el perfil en cuanto se crea la cuenta.
+  // El nombre y el tipo de cuenta viajan como metadatos del registro — el
+  // trigger de Supabase los guarda solo en el perfil en cuanto se crea la
+  // cuenta (ver handle_new_user() en part6_tipo_cuenta.sql).
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { full_name: fullName } },
+    options: { data: { full_name: fullName, account_type: accountType } },
   });
   if (submitBtn) submitBtn.classList.remove("btn-loading");
 
@@ -535,9 +578,28 @@ perfilColor2Swatches.forEach((btn) => {
   btn.addEventListener("click", () => setPerfilColor2Seleccionado(btn.dataset.color));
 });
 
+// ---- Tipo de cuenta (empresarial / personal), editable desde "Mi perfil" ----
+const perfilTipoCuentaWrap = document.getElementById("perfil-tipo-cuenta-wrap");
+const perfilTipoCuentaInput = document.getElementById("perfil-tipo-cuenta");
+const perfilTipoCuentaCards = document.querySelectorAll("#perfil-tipo-cuenta-row .account-type-card");
+
+function setPerfilTipoCuentaSeleccionado(tipo) {
+  const valido = tipo === "personal" ? "personal" : "empresarial";
+  perfilTipoCuentaInput.value = valido;
+  perfilTipoCuentaCards.forEach((btn) => {
+    btn.classList.toggle("selected", btn.dataset.type === valido);
+  });
+}
+
+perfilTipoCuentaCards.forEach((btn) => {
+  btn.addEventListener("click", () => setPerfilTipoCuentaSeleccionado(btn.dataset.type));
+});
+
 document.getElementById("user-info").addEventListener("click", () => {
   if (!state.currentProfile) return;
   document.getElementById("perfil-nombre").value = state.currentProfile.full_name || "";
+  setPerfilTipoCuentaSeleccionado(state.currentProfile.account_type || "empresarial");
+  if (perfilTipoCuentaWrap) perfilTipoCuentaWrap.hidden = state.currentProfile.role === "client";
   document.getElementById("perfil-privacy-password").value = state.currentProfile.privacy_password || "";
   document.getElementById("perfil-regimen").value = state.currentProfile.tax_regime || "";
   document.getElementById("perfil-iva-default").value = state.currentProfile.default_iva_rate ?? "";
@@ -547,10 +609,10 @@ document.getElementById("user-info").addEventListener("click", () => {
   setPerfilColorSeleccionado(state.currentProfile.theme_color || DEFAULT_ACCENT);
   setPerfilColor2Seleccionado(state.currentProfile.theme_secondary_color || DEFAULT_SECONDARY);
   document.getElementById("perfil-tema-modo").value = state.currentProfile.theme_mode === "dark" ? "dark" : "light";
-  // El régimen fiscal / tasas de factura y la tarjeta de crédito solo
-  // aplican a quien factura o gasta en el negocio (dueño y colaboradores)
-  // — un cliente no necesita configurar esto.
-  perfilRegimenWrap.hidden = state.currentProfile.role === "client";
+  // El régimen fiscal / tasas de factura solo aplica a quien factura en el
+  // negocio (cuentas "empresarial", y nunca a un cliente). La tarjeta de
+  // crédito sí aplica también a cuentas "personal".
+  perfilRegimenWrap.hidden = state.currentProfile.role === "client" || state.currentProfile.account_type === "personal";
   if (perfilCreditoWrap) perfilCreditoWrap.hidden = state.currentProfile.role === "client";
   document.getElementById("perfil-error").hidden = true;
   perfilModal.hidden = false;
@@ -567,6 +629,7 @@ document.getElementById("form-perfil").addEventListener("submit", async (e) => {
 
   const update = {
     full_name: document.getElementById("perfil-nombre").value.trim() || null,
+    account_type: perfilTipoCuentaInput.value === "personal" ? "personal" : "empresarial",
     privacy_password: document.getElementById("perfil-privacy-password").value || null,
     tax_regime: document.getElementById("perfil-regimen").value || null,
     default_iva_rate: document.getElementById("perfil-iva-default").value

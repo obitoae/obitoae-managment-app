@@ -44,6 +44,20 @@
       <input type="email" id="signup-email" required autocomplete="username">
       <label>Contraseña</label>
       <input type="password" id="signup-password" required autocomplete="new-password" minlength="6">
+
+      <label>¿Qué tipo de cuenta quieres usar?</label>
+      <div class="account-type-row" id="signup-account-type-row">
+        <button type="button" class="account-type-card selected" data-type="empresarial">
+          <span class="account-type-title">Empresarial</span>
+          <span class="account-type-desc">Clientes, ingresos, facturación y régimen fiscal — para llevar un negocio o actividad profesional.</span>
+        </button>
+        <button type="button" class="account-type-card" data-type="personal">
+          <span class="account-type-title">Personal</span>
+          <span class="account-type-desc">Más sencilla, sin facturación ni clientes — para organizar tus tareas, gastos y tarjeta de crédito del día a día.</span>
+        </button>
+      </div>
+      <input type="hidden" id="signup-account-type" value="empresarial">
+
       <button type="submit" class="btn btn-primary btn-block">Crear cuenta</button>
       <p id="signup-error" class="error-text" hidden></p>
       <p id="signup-success" class="success-text" hidden></p>
@@ -77,8 +91,8 @@
     <div class="sidebar-brand">Obitoae<br>Management</div>
     <nav class="sidebar-nav">
       <button class="nav-item active" data-view="inicio">Inicio</button>
-      <button class="nav-item" data-view="dashboard">Panel</button>
-      <button class="nav-item" data-view="clientes">Clientes</button>
+      <button class="nav-item nav-business-only" data-view="dashboard">Panel</button>
+      <button class="nav-item nav-business-only" data-view="clientes">Clientes</button>
 
       <div class="nav-group">
         <button class="nav-group-header" data-group="tareas">
@@ -95,12 +109,12 @@
           <span>Finanzas</span><span class="nav-group-caret">▾</span>
         </button>
         <div class="nav-group-items">
-          <button class="nav-item nav-subitem" data-view="ingresos">Ingresos</button>
+          <button class="nav-item nav-subitem nav-business-only" data-view="ingresos">Ingresos</button>
           <button class="nav-item nav-subitem" data-view="gastos">Gastos</button>
-          <button class="nav-item nav-subitem" data-view="facturas">Facturas</button>
+          <button class="nav-item nav-subitem nav-business-only" data-view="facturas">Facturas</button>
           <button class="nav-item nav-subitem" data-view="credito">Tarjeta de crédito</button>
-          <button class="nav-item nav-subitem" data-view="ahorro">Ahorro</button>
-          <button class="nav-item nav-subitem" data-view="historico">Histórico</button>
+          <button class="nav-item nav-subitem nav-business-only" data-view="ahorro">Ahorro</button>
+          <button class="nav-item nav-subitem nav-business-only" data-view="historico">Histórico</button>
         </div>
       </div>
     </nav>
@@ -118,6 +132,22 @@
       <form id="form-perfil">
         <label>Nombre</label>
         <input type="text" id="perfil-nombre">
+
+        <div id="perfil-tipo-cuenta-wrap">
+          <label>Tipo de cuenta</label>
+          <div class="account-type-row" id="perfil-tipo-cuenta-row">
+            <button type="button" class="account-type-card" data-type="empresarial">
+              <span class="account-type-title">Empresarial</span>
+              <span class="account-type-desc">Clientes, ingresos, facturación y régimen fiscal.</span>
+            </button>
+            <button type="button" class="account-type-card" data-type="personal">
+              <span class="account-type-title">Personal</span>
+              <span class="account-type-desc">Sin facturación ni clientes — solo tareas, gastos y tarjeta de crédito.</span>
+            </button>
+          </div>
+          <input type="hidden" id="perfil-tipo-cuenta">
+          <p class="muted" style="margin-top:4px;">Puedes cambiarlo cuando quieras — la barra lateral se ajusta según el tipo que elijas.</p>
+        </div>
 
         <label>Contraseña de privacidad personal (opcional)</label>
         <input type="password" id="perfil-privacy-password" placeholder="Déjalo vacío para no ocultar tus montos" autocomplete="new-password">
@@ -477,7 +507,7 @@
               <option>Ahorro</option><option>Otro</option>
             </select>
           </div>
-          <div><label>Cliente relacionado (opcional)</label><select id="gasto-cliente"><option value="">— Ninguno —</option></select></div>
+          <div class="gasto-business-only"><label>Cliente relacionado (opcional)</label><select id="gasto-cliente"><option value="">— Ninguno —</option></select></div>
           <div><label>Detalle</label><input type="text" id="gasto-detalle"></div>
           <div><label>Monto</label><input type="number" step="0.01" id="gasto-monto" required></div>
           <div><label>Recurrencia</label>
@@ -491,9 +521,9 @@
             </select>
           </div>
           <div><label>Fecha</label><input type="date" id="gasto-fecha" required></div>
-          <div class="checkbox-row"><label><input type="checkbox" id="gasto-facturado"> Tengo factura de este gasto</label></div>
-          <div><label>Folio de factura (opcional)</label><input type="text" id="gasto-folio"></div>
-          <div><label>Fecha de factura (opcional)</label><input type="date" id="gasto-fecha-factura"></div>
+          <div class="checkbox-row gasto-business-only"><label><input type="checkbox" id="gasto-facturado"> Tengo factura de este gasto</label></div>
+          <div class="gasto-business-only"><label>Folio de factura (opcional)</label><input type="text" id="gasto-folio"></div>
+          <div class="gasto-business-only"><label>Fecha de factura (opcional)</label><input type="date" id="gasto-fecha-factura"></div>
           <div class="form-actions">
             <button type="submit" id="gasto-submit-btn" class="btn btn-primary">Registrar gasto</button>
             <button type="button" id="gasto-cancel-btn" class="btn-cancel-edit" hidden>Cancelar edición</button>
