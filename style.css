@@ -28,7 +28,8 @@ body { margin: 0; background: var(--body-bg); color: var(--text); font-family: v
 /* ---------------- Animaciones globales ---------------- */
 a, button, .nav-item, .nav-group-header, .nav-subitem, .kanban-move-btn, .btn-edit, .btn-delete,
 .btn-cancel-edit, .btn-calendar, .btn-logout, .kpi-card, .panel, .data-table tbody tr,
-.priority-tag, .invoiced-tag, input, select, textarea {
+.priority-tag, .invoiced-tag, input, select, textarea, .kanban-card, .modal-card, .color-swatch,
+.color-swatch-custom, .user-info {
   transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease,
     box-shadow 0.15s ease, transform 0.12s ease, opacity 0.15s ease;
 }
@@ -61,6 +62,20 @@ input:focus, select:focus, textarea:focus {
 @keyframes cover-in { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
 .cover-content { animation: cover-in 0.6s ease; }
 .login-card { animation: app-fade-in 0.4s ease; }
+
+/* ---------------- Transiciones al navegar entre secciones ---------------- */
+@keyframes view-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+.view:not([hidden]) { animation: view-in 0.32s ease; }
+.view:not([hidden]) .panel, .view:not([hidden]) .kpi-card {
+  animation: view-in 0.4s ease backwards;
+  animation-delay: 0.04s;
+}
+
+/* ---------------- Modales ---------------- */
+@keyframes modal-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modal-card-in { from { opacity: 0; transform: scale(0.95) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+.modal-overlay:not([hidden]) { animation: modal-backdrop-in 0.18s ease; }
+.modal-overlay:not([hidden]) .modal-card { animation: modal-card-in 0.28s cubic-bezier(0.19, 1, 0.22, 1); }
 h1, h2, h3 { font-family: var(--font-display); font-weight: normal; letter-spacing: 0.02em; margin: 0 0 4px 0; }
 input, select, button { font-family: var(--font-body); }
 
@@ -231,6 +246,7 @@ input, select, button { font-family: var(--font-body); }
 .alert-box {
   background: var(--red-bg); color: #8a3b24; border-radius: 8px; padding: 14px 18px;
   font-size: 13px; margin-bottom: 20px; font-style: italic; font-family: var(--font-body);
+  animation: view-in 0.3s ease backwards;
 }
 .alert-box.alert-ok { background: var(--green-bg); color: #4b5a1f; font-style: normal; }
 .alert-box.alert-warn { background: #fdf1d9; color: #8a5a1f; font-style: normal; }
@@ -247,7 +263,7 @@ input, select, button { font-family: var(--font-body); }
 /* ---------------- Grids / panels ---------------- */
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
 .panel { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 20px; min-width: 0; }
-.panel:hover { box-shadow: 0 3px 12px rgba(0,0,0,0.05); }
+.panel:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.06); transform: translateY(-1px); }
 .panel h3 { font-size: 18px; margin-bottom: 14px; }
 .chart-wrap { position: relative; width: 100%; height: 260px; }
 
@@ -321,6 +337,7 @@ input, select, button { font-family: var(--font-body); }
 .kanban-card {
   background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 10px;
   cursor: grab; transition: box-shadow 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
+  animation: view-in 0.22s ease backwards;
 }
 .kanban-card:hover { box-shadow: 0 3px 10px rgba(0,0,0,0.08); transform: translateY(-1px); }
 .kanban-card.dragging { opacity: 0.4; cursor: grabbing; }
