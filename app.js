@@ -164,6 +164,8 @@ let state = {
   creditPayments: [],
   invoicesIssued: [],
   invoicesReceived: [],
+  currentUserId: null,
+  currentProfile: null, // { id, email, full_name, role }
 };
 
 // ============================================================
@@ -188,6 +190,34 @@ function showLogin() {
   appEl.hidden = true;
 }
 
+// Carga quién eres (tu id de Supabase Auth) y tu perfil (nombre + rol:
+// "owner" ve todo, "member" solo lo suyo — esto ya lo filtra Supabase solo
+// por las políticas de seguridad, aquí nada más lo usamos para mostrar tu
+// nombre/rol en la barra lateral y para etiquetar lo que creas como tuyo).
+async function loadCurrentProfile() {
+  const { data: userData } = await supabase.auth.getUser();
+  const user = userData && userData.user;
+  if (!user) {
+    state.currentUserId = null;
+    state.currentProfile = null;
+    return;
+  }
+  state.currentUserId = user.id;
+
+  const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle();
+  state.currentProfile = profile || { id: user.id, email: user.email, full_name: null, role: "member" };
+
+  const infoEl = document.getElementById("user-info");
+  if (infoEl) {
+    const nombre = state.currentProfile.full_name || state.currentProfile.email || "";
+    const esDueno = state.currentProfile.role === "owner";
+    infoEl.innerHTML =
+      `<span>${nombre}</span>` +
+      `<span class="user-role-tag${esDueno ? "" : " member"}">${esDueno ? "Dueño" : "Colaborador"}</span>`;
+    infoEl.hidden = false;
+  }
+}
+
 // Portada: se muestra siempre después de entrar, antes de la app. Los datos
 // se cargan de fondo mientras el usuario la ve, así que al tocar "Ingresar"
 // todo ya está listo.
@@ -196,6 +226,7 @@ async function showApp() {
   appEl.hidden = true;
   coverScreen.hidden = false;
   document.getElementById("cover-fecha").textContent = fechaLargaHoy();
+  await loadCurrentProfile();
   await loadAll();
   renderAll();
 }
@@ -240,6 +271,10 @@ document.getElementById("login-form").addEventListener("submit", async (e) => {
 
 document.getElementById("logout-btn").addEventListener("click", async () => {
   await supabase.auth.signOut();
+  state.currentUserId = null;
+  state.currentProfile = null;
+  const infoEl = document.getElementById("user-info");
+  if (infoEl) infoEl.hidden = true;
   showLogin();
 });
 
@@ -376,10 +411,15 @@ function clientName(id) {
 // ---- Guardar con manejo de errores: si Supabase rechaza el insert/update
 // (por ejemplo porque falta correr el SQL de esa tabla), avisa en vez de
 // fallar en silencio. Regresa true si se guardó bien, false si no. ----
+// En los registros NUEVOS (sin id) le ponemos owner_id = tu usuario, para
+// que las políticas de privacidad sepan que es tuyo (esto es indispensable
+// desde que existen cuentas de colaborador — sin esto, el insert lo
+// rechaza Supabase).
 async function saveRow(table, id, row) {
+  const payload = id ? row : { ...row, owner_id: state.currentUserId };
   const { error } = id
     ? await supabase.from(table).update(row).eq("id", id)
-    : await supabase.from(table).insert(row);
+    : await supabase.from(table).insert(payload);
   if (error) {
     alert(
       `No se pudo guardar (tabla "${table}"): ${error.message}\n\n` +
