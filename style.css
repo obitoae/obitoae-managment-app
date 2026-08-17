@@ -141,12 +141,12 @@ input, select, button { font-family: var(--font-body); }
 .btn-cover-ingresar:active { transform: translateY(0); }
 
 @media (max-width: 600px) {
-  .cover-name { font-size: 56px; line-height: 1.05; }
+  .cover-name { font-size: 34px; line-height: 1.15; }
   .cover-eyebrow { font-size: 11px; letter-spacing: 0.22em; }
 }
 
 @media (max-width: 360px) {
-  .cover-name { font-size: 46px; }
+  .cover-name { font-size: 28px; }
 }
 
 /* ---------------- App shell ---------------- */
