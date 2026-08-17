@@ -269,6 +269,58 @@ document.getElementById("login-form").addEventListener("submit", async (e) => {
   await showApp();
 });
 
+// ---- Crear cuenta (registro público con código de invitación) ----
+const loginFormEl = document.getElementById("login-form");
+const signupFormEl = document.getElementById("signup-form");
+const btnShowSignup = document.getElementById("btn-show-signup");
+const btnShowLogin = document.getElementById("btn-show-login");
+
+btnShowSignup.addEventListener("click", () => {
+  loginFormEl.hidden = true;
+  btnShowSignup.hidden = true;
+  signupFormEl.hidden = false;
+  btnShowLogin.hidden = false;
+});
+
+btnShowLogin.addEventListener("click", () => {
+  signupFormEl.hidden = true;
+  btnShowLogin.hidden = true;
+  loginFormEl.hidden = false;
+  btnShowSignup.hidden = false;
+});
+
+signupFormEl.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const email = document.getElementById("signup-email").value.trim();
+  const password = document.getElementById("signup-password").value;
+  const errEl = document.getElementById("signup-error");
+  const okEl = document.getElementById("signup-success");
+  errEl.hidden = true;
+  okEl.hidden = true;
+
+  const submitBtn = document.querySelector("#signup-form button[type='submit']");
+  if (submitBtn) submitBtn.classList.add("btn-loading");
+  const { data, error } = await supabase.auth.signUp({ email, password });
+  if (submitBtn) submitBtn.classList.remove("btn-loading");
+
+  if (error) {
+    errEl.textContent = "No se pudo crear la cuenta: " + error.message;
+    errEl.hidden = false;
+    return;
+  }
+
+  // Si tu proyecto de Supabase pide confirmar el correo (así viene por
+  // default), la sesión no queda activa todavía — hay que avisarle a la
+  // persona que revise su correo antes de poder entrar.
+  if (data && data.session) {
+    await showApp();
+  } else {
+    signupFormEl.reset();
+    okEl.textContent = "¡Cuenta creada! Revisa tu correo para confirmarla, y ya podrás entrar.";
+    okEl.hidden = false;
+  }
+});
+
 document.getElementById("logout-btn").addEventListener("click", async () => {
   await supabase.auth.signOut();
   state.currentUserId = null;

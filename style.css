@@ -76,6 +76,14 @@ input, select, button { font-family: var(--font-body); }
   background: #2f2f29; color: #fff; font-size: 14px;
 }
 .error-text { color: #e07a5f; font-size: 13px; margin-top: 12px; }
+.success-text { color: var(--green-soft); font-size: 13px; margin-top: 12px; }
+.btn-link-toggle {
+  display: block; width: 100%; background: none; border: none; color: #8fa33a;
+  font-size: 12px; margin-top: 16px; cursor: pointer; text-align: center; padding: 4px;
+  font-family: var(--font-body); text-decoration: underline;
+}
+.btn-link-toggle:hover { color: var(--green-soft); }
+.btn-link-toggle[hidden] { display: none; }
 
 /* ---------------- Portada ---------------- */
 .cover-screen {
