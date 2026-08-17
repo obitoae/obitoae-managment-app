@@ -129,7 +129,6 @@
 
           <label>Día límite de pago</label>
           <input type="number" id="perfil-pago-dia" min="1" max="31" placeholder="ej. 5">
-          <p class="muted" style="margin-top:4px;">Si no los configuras, se usa el día 26 para el corte y el día 5 del siguiente mes para el pago.</p>
         </div>
 
         <div id="perfil-regimen-wrap">
@@ -592,6 +591,12 @@
         <p class="muted">Agrupa tus gastos con método "Tarjeta de crédito" por corte y lleva el control de tus pagos. El día de corte y el día límite de pago son los que configures en "Mi perfil" — cada quien puede poner los de su propia tarjeta.</p>
       </header>
 
+      <div class="panel" id="credito-sin-configurar" hidden>
+        <h3>Todavía no configuras tu tarjeta</h3>
+        <p class="muted">Pon el día de corte y el día límite de pago de tu tarjeta en "Mi perfil" (barra lateral, donde sale tu nombre) para activar esta sección.</p>
+      </div>
+
+      <div id="credito-config-wrap">
       <div class="panel">
         <div class="panel-header-row">
           <h3 id="credito-corte-label">Corte actual</h3>
@@ -666,6 +671,7 @@
           <tbody id="tabla-historico-cortes"></tbody>
         </table>
         </div>
+      </div>
       </div>
     </section>
 

@@ -55,23 +55,29 @@ function downloadICS(filename, events) {
   URL.revokeObjectURL(url);
 }
 
-// El día de corte y el día límite de pago son configurables por persona
-// (en "Mi perfil") — si alguien no los configura, se usan 26 y 5, que era
-// el comportamiento fijo de antes.
+// El día de corte y el día límite de pago son 100% configurables por
+// persona, desde "Mi perfil" — si alguien no los configura, no hay ningún
+// valor por default: la sección de Tarjeta de crédito simplemente le pide
+// que los configure antes de mostrar nada.
 function getCorteDay() {
   const d = state.currentProfile && Number(state.currentProfile.credit_cutoff_day);
-  return d && d >= 1 && d <= 31 ? d : 26;
+  return d && d >= 1 && d <= 31 ? d : null;
 }
 
 function getDueDay() {
   const d = state.currentProfile && Number(state.currentProfile.credit_due_day);
-  return d && d >= 1 && d <= 31 ? d : 5;
+  return d && d >= 1 && d <= 31 ? d : null;
+}
+
+function creditoConfigurado() {
+  return getCorteDay() !== null && getDueDay() !== null;
 }
 
 // Regla de pago de tarjeta: el pago del corte que cierra el día configurado
 // de un mes vence el día límite configurado del mes siguiente.
 function fechaPagoCorte(periodKey) {
   const dueDay = getDueDay();
+  if (dueDay === null || !periodKey) return null;
   const [y, m] = periodKey.split("-").map(Number);
   let payYear = y;
   let payMonth = m + 1;
@@ -84,6 +90,7 @@ function fechaPagoCorte(periodKey) {
 
 function fechaCorteCierre(periodKey) {
   const corteDay = getCorteDay();
+  if (corteDay === null || !periodKey) return null;
   const [y, m] = periodKey.split("-").map(Number);
   return `${y}-${String(m).padStart(2, "0")}-${String(corteDay).padStart(2, "0")}`;
 }
@@ -142,6 +149,7 @@ function fechaCortaES(fechaISO) {
 function cortePeriodKey(dateStr) {
   if (!dateStr) return null;
   const corteDay = getCorteDay();
+  if (corteDay === null) return null;
   const [y, m, d] = dateStr.split("-").map(Number);
   let year = y;
   let month = m; // 1-12
@@ -161,6 +169,7 @@ function currentCorteKey() {
 
 function corteRangeLabel(periodKey) {
   const corteDay = getCorteDay();
+  if (corteDay === null || !periodKey) return "—";
   const inicio = corteDay >= 28 ? 1 : corteDay + 1;
   const [y, m] = periodKey.split("-").map(Number);
   let prevMonth = m - 1;
@@ -697,18 +706,24 @@ function renderInicioView() {
   document.getElementById("inicio-alertas").innerHTML = alertasHTML.join("");
 
   // ---- Tarjeta de crédito: próximos corte y pago ----
-  const proximoCorte = proximaFechaDelMes(26);
-  const proximoPago = proximaFechaDelMes(5);
-  const diasCorte = diasEntreHoyY(proximoCorte);
-  const diasPago = diasEntreHoyY(proximoPago);
-  const actual = currentCorteKey();
-  const saldoActual = totalCorte(actual) - pagadoCorte(actual);
+  if (!creditoConfigurado()) {
+    document.getElementById("inicio-credito").innerHTML = `
+      <div class="stat-row"><span class="muted">Configura el día de corte y de pago de tu tarjeta en "Mi perfil" para ver esto aquí.</span></div>
+    `;
+  } else {
+    const proximoCorte = proximaFechaDelMes(getCorteDay());
+    const proximoPago = proximaFechaDelMes(getDueDay());
+    const diasCorte = diasEntreHoyY(proximoCorte);
+    const diasPago = diasEntreHoyY(proximoPago);
+    const actual = currentCorteKey();
+    const saldoActual = totalCorte(actual) - pagadoCorte(actual);
 
-  document.getElementById("inicio-credito").innerHTML = `
-    <div class="stat-row"><span>Próximo corte</span><span class="amount">${fechaCortaES(proximoCorte)} (en ${diasCorte} día${diasCorte === 1 ? "" : "s"})</span></div>
-    <div class="stat-row"><span>Próximo pago</span><span class="amount ${diasPago <= 3 ? "negative" : ""}">${fechaCortaES(proximoPago)} (en ${diasPago} día${diasPago === 1 ? "" : "s"})</span></div>
-    <div class="stat-row"><span>Saldo actual del corte</span><span class="amount ing-amount">${money(saldoActual)}</span></div>
-  `;
+    document.getElementById("inicio-credito").innerHTML = `
+      <div class="stat-row"><span>Próximo corte</span><span class="amount">${fechaCortaES(proximoCorte)} (en ${diasCorte} día${diasCorte === 1 ? "" : "s"})</span></div>
+      <div class="stat-row"><span>Próximo pago</span><span class="amount ${diasPago <= 3 ? "negative" : ""}">${fechaCortaES(proximoPago)} (en ${diasPago} día${diasPago === 1 ? "" : "s"})</span></div>
+      <div class="stat-row"><span>Saldo actual del corte</span><span class="amount ing-amount">${money(saldoActual)}</span></div>
+    `;
+  }
 
   // ---- Resumen rápido ----
   const periodo = currentPeriodKey();
@@ -1195,6 +1210,7 @@ document.getElementById("gasto-cancel-btn").addEventListener("click", resetGasto
 document.getElementById("pago-credito-fecha").value = todayISO();
 
 function gastosCreditoDelCorte(periodKey) {
+  if (!periodKey) return []; // sin corte configurado, no hay nada que agrupar
   return state.expenses.filter(
     (g) => g.payment_method === "Tarjeta de crédito" && cortePeriodKey(g.date) === periodKey
   );
@@ -1205,6 +1221,7 @@ function totalCorte(periodKey) {
 }
 
 function pagadoCorte(periodKey) {
+  if (!periodKey) return 0;
   return state.creditPayments
     .filter((p) => p.period_key === periodKey)
     .reduce((s, p) => s + Number(p.amount || 0), 0);
@@ -1220,6 +1237,16 @@ function allCortePeriods() {
 }
 
 function renderCreditoView() {
+  const sinConfigurar = document.getElementById("credito-sin-configurar");
+  const configWrap = document.getElementById("credito-config-wrap");
+  if (!creditoConfigurado()) {
+    if (sinConfigurar) sinConfigurar.hidden = false;
+    if (configWrap) configWrap.hidden = true;
+    return;
+  }
+  if (sinConfigurar) sinConfigurar.hidden = true;
+  if (configWrap) configWrap.hidden = false;
+
   const periodos = allCortePeriods();
   const actual = currentCorteKey();
 
@@ -1909,8 +1936,12 @@ function renderDashboard() {
   document.getElementById("kpi-tareas").textContent = state.tasks.filter((t) => t.status !== "Hecho").length;
   const ahorroTotal = state.savingsFunds.reduce((s, f) => s + fondoAcumulado(f.id), 0);
   document.getElementById("kpi-ahorro").textContent = money(ahorroTotal);
-  const saldoCreditoActual = totalCorte(currentCorteKey()) - pagadoCorte(currentCorteKey());
-  document.getElementById("kpi-credito").textContent = money(saldoCreditoActual);
+  if (creditoConfigurado()) {
+    const saldoCreditoActual = totalCorte(currentCorteKey()) - pagadoCorte(currentCorteKey());
+    document.getElementById("kpi-credito").textContent = money(saldoCreditoActual);
+  } else {
+    document.getElementById("kpi-credito").textContent = "—";
+  }
 
   // ---- Concentración de ingresos por cliente (todo el histórico, más representativo que solo el mes) ----
   const porCliente = {};
