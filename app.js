@@ -64,24 +64,24 @@ function downloadICS(filename, events) {
 // equipo (selector en la vista de Tarjeta de crédito), y mientras esa
 // selección esté activa, estas funciones leen el perfil y los datos de la
 // persona elegida en vez de los del dueño.
-function creditoViewUserId() {
-  return (state.currentProfile && state.currentProfile.role === "owner" && state.creditoViewAsId) || state.currentUserId;
+function viewAsUserId() {
+  return (state.currentProfile && state.currentProfile.role === "owner" && state.viewAsId) || state.currentUserId;
 }
 
-function creditoViewProfile() {
-  const id = creditoViewUserId();
+function viewAsProfile() {
+  const id = viewAsUserId();
   if (id === state.currentUserId) return state.currentProfile;
   return state.profiles.find((p) => p.id === id) || state.currentProfile;
 }
 
 function getCorteDay() {
-  const perfil = creditoViewProfile();
+  const perfil = viewAsProfile();
   const d = perfil && Number(perfil.credit_cutoff_day);
   return d && d >= 1 && d <= 31 ? d : null;
 }
 
 function getDueDay() {
-  const perfil = creditoViewProfile();
+  const perfil = viewAsProfile();
   const d = perfil && Number(perfil.credit_due_day);
   return d && d >= 1 && d <= 31 ? d : null;
 }
@@ -302,10 +302,11 @@ let state = {
   profiles: [],
   currentUserId: null,
   currentProfile: null, // { id, email, full_name, role }
-  // Solo el dueño puede cambiar esto — le permite ver la tarjeta de crédito
-  // de otra persona del equipo. Para cualquier otro rol siempre queda en
-  // null (o sea, "la mía"). Se resetea al cerrar sesión.
-  creditoViewAsId: null,
+  // Solo el dueño puede cambiar esto — le permite ver TODA la cuenta (Clientes,
+  // Ingresos, Gastos, Facturas, Tareas, Ahorro, Tarjeta de crédito, etc.) de
+  // otra persona del equipo, de solo lectura. Para cualquier otro rol siempre
+  // queda en null (o sea, "la mía"). Se resetea al cerrar sesión.
+  viewAsId: null,
 };
 
 // ============================================================
@@ -343,7 +344,7 @@ async function loadCurrentProfile() {
     return;
   }
   state.currentUserId = user.id;
-  state.creditoViewAsId = null;
+  state.viewAsId = null;
 
   const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle();
   state.currentProfile = profile || { id: user.id, email: user.email, full_name: null, role: "member" };
@@ -555,6 +556,8 @@ document.getElementById("logout-btn").addEventListener("click", async () => {
   await supabase.auth.signOut();
   state.currentUserId = null;
   state.currentProfile = null;
+  state.viewAsId = null;
+  document.body.classList.remove("viendo-otro");
   applyTheme();
   const infoEl = document.getElementById("user-info");
   if (infoEl) infoEl.hidden = true;
@@ -816,6 +819,39 @@ function clientName(id) {
   return c ? c.name : "—";
 }
 
+// ============================================================
+// Cada cuenta es individual — nadie ve lo de nadie más. Estas funciones
+// filtran cada tabla a solo lo que le pertenece a viewAsUserId() (tú mismo,
+// o —si eres el dueño y elegiste "ver como"— la persona que estás viendo).
+// state.clients/income/etc. siguen trayendo TODO de la base de datos (así
+// puede funcionar "ver como" sin recargar); estas son las que debe usar
+// cualquier vista o cálculo que se le vaya a mostrar a la persona.
+// ============================================================
+function visibleClients() {
+  return state.clients.filter((c) => c.owner_id === viewAsUserId());
+}
+function visibleIncome() {
+  return state.income.filter((i) => i.owner_id === viewAsUserId());
+}
+function visibleExpenses() {
+  return state.expenses.filter((g) => g.owner_id === viewAsUserId());
+}
+function visibleTasks() {
+  return state.tasks.filter((t) => t.owner_id === viewAsUserId());
+}
+function visibleSavingsFunds() {
+  return state.savingsFunds.filter((f) => f.owner_id === viewAsUserId());
+}
+function visibleSavingsMoves() {
+  return state.savingsMoves.filter((m) => m.owner_id === viewAsUserId());
+}
+function visibleInvoicesIssued() {
+  return state.invoicesIssued.filter((f) => f.owner_id === viewAsUserId());
+}
+function visibleInvoicesReceived() {
+  return state.invoicesReceived.filter((f) => f.owner_id === viewAsUserId());
+}
+
 // ---- Guardar con manejo de errores: si Supabase rechaza el insert/update
 // (por ejemplo porque falta correr el SQL de esa tabla), avisa en vez de
 // fallar en silencio. Regresa true si se guardó bien, false si no. ----
@@ -839,6 +875,7 @@ async function saveRow(table, id, row) {
 }
 
 function renderAll() {
+  aplicarModoVerComo();
   renderClientSelects();
   renderClientesView();
   renderTareasView();
@@ -895,7 +932,7 @@ function renderInicioView() {
 
   const hoy = todayISO();
 
-  const pendientes = state.tasks.filter((t) => t.status !== "Hecho" && t.due_date);
+  const pendientes = visibleTasks().filter((t) => t.status !== "Hecho" && t.due_date);
   const vencidas = pendientes.filter((t) => t.due_date < hoy).sort((a, b) => a.due_date.localeCompare(b.due_date));
   const limite7 = new Date(hoy + "T00:00:00");
   limite7.setDate(limite7.getDate() + 7);
@@ -963,9 +1000,9 @@ function renderInicioView() {
 
   // ---- Resumen rápido ----
   const periodo = currentPeriodKey();
-  const ingresosMes = state.income.filter((i) => i.date && i.date.slice(0, 7) === periodo).reduce((s, i) => s + Number(i.amount || 0), 0);
-  const gastosMes = state.expenses.filter((g) => g.date && g.date.slice(0, 7) === periodo).reduce((s, g) => s + Number(g.amount || 0), 0);
-  const ahorroTotal = state.savingsFunds.reduce((s, f) => s + fondoAcumulado(f.id), 0);
+  const ingresosMes = visibleIncome().filter((i) => i.date && i.date.slice(0, 7) === periodo).reduce((s, i) => s + Number(i.amount || 0), 0);
+  const gastosMes = visibleExpenses().filter((g) => g.date && g.date.slice(0, 7) === periodo).reduce((s, g) => s + Number(g.amount || 0), 0);
+  const ahorroTotal = visibleSavingsFunds().reduce((s, f) => s + fondoAcumulado(f.id), 0);
 
   document.getElementById("inicio-resumen").innerHTML = `
     <div class="stat-row"><span>Tareas pendientes</span><span class="amount">${pendientes.length}</span></div>
@@ -980,7 +1017,7 @@ function renderInicioView() {
 // CLIENTES
 // ============================================================
 function renderClientSelects() {
-  const opts = state.clients.map((c) => `<option value="${c.id}">${c.name}</option>`).join("");
+  const opts = visibleClients().map((c) => `<option value="${c.id}">${c.name}</option>`).join("");
   document.getElementById("ingreso-cliente").innerHTML = opts;
   document.getElementById("gasto-cliente").innerHTML =
     `<option value="">— Ninguno —</option>` + opts;
@@ -992,11 +1029,13 @@ function renderClientSelects() {
 
 function renderClientesView() {
   const tbody = document.getElementById("tabla-clientes");
-  const esDueno = state.currentProfile && state.currentProfile.role === "owner";
+  // "Vincular cuenta" es una acción, no solo consulta — se desactiva
+  // mientras ves la cuenta de otra persona, igual que el resto de la app.
+  const esDueno = state.currentProfile && state.currentProfile.role === "owner" && viewAsUserId() === state.currentUserId;
   // Cuentas que se pueden vincular a un cliente: no son el dueño, y no están
   // ya vinculadas a OTRO cliente distinto de este.
   const perfiles = state.profiles || [];
-  tbody.innerHTML = state.clients
+  tbody.innerHTML = visibleClients()
     .map((c) => {
       const vinculado = perfiles.find((p) => p.client_id === c.id);
       let portalCell;
@@ -1140,7 +1179,7 @@ function tareaCardHTML(t) {
 
 function renderTareasView() {
   const porEstado = { Pendiente: [], "En curso": [], Hecho: [], Cancelado: [] };
-  state.tasks.forEach((t) => {
+  visibleTasks().forEach((t) => {
     if (porEstado[t.status]) porEstado[t.status].push(t);
   });
 
@@ -1171,7 +1210,7 @@ function renderTareasView() {
 }
 
 function renderTareasHistoricoView() {
-  const hechas = state.tasks
+  const hechas = visibleTasks()
     .filter((t) => t.status === "Hecho")
     .slice()
     .sort((a, b) => (b.due_date || "").localeCompare(a.due_date || ""));
@@ -1196,6 +1235,7 @@ function renderTareasHistoricoView() {
 
 document.addEventListener("click", async (e) => {
   if (!e.target.matches(".kanban-move-btn")) return;
+  if (viewAsUserId() !== state.currentUserId) return; // solo lectura mientras ves la cuenta de otra persona
   const { id, to } = e.target.dataset;
   await supabase.from("tasks").update({ status: to }).eq("id", id);
   await loadAll();
@@ -1206,6 +1246,10 @@ document.addEventListener("click", async (e) => {
 document.addEventListener("dragstart", (e) => {
   const card = e.target.closest && e.target.closest(".kanban-card");
   if (!card) return;
+  if (viewAsUserId() !== state.currentUserId) {
+    e.preventDefault(); // solo lectura mientras ves la cuenta de otra persona
+    return;
+  }
   card.classList.add("dragging");
   e.dataTransfer.effectAllowed = "move";
   e.dataTransfer.setData("text/plain", card.dataset.id);
@@ -1230,6 +1274,7 @@ document.querySelectorAll(".kanban-dropzone").forEach((zone) => {
   zone.addEventListener("drop", async (e) => {
     e.preventDefault();
     zone.classList.remove("drag-over");
+    if (viewAsUserId() !== state.currentUserId) return; // solo lectura mientras ves la cuenta de otra persona
     const id = e.dataTransfer.getData("text/plain");
     const column = zone.closest(".kanban-column");
     const to = column && column.dataset.status;
@@ -1290,7 +1335,7 @@ document.getElementById("ingreso-fecha").value = todayISO();
 
 function renderIngresosView() {
   const tbody = document.getElementById("tabla-ingresos");
-  const delMes = state.income.filter((i) => i.date && i.date.slice(0, 7) === currentPeriodKey());
+  const delMes = visibleIncome().filter((i) => i.date && i.date.slice(0, 7) === currentPeriodKey());
   tbody.innerHTML =
     delMes
       .map(
@@ -1384,7 +1429,7 @@ document.getElementById("gasto-fecha").value = todayISO();
 
 function renderGastosView() {
   const tbody = document.getElementById("tabla-gastos");
-  const delMes = state.expenses.filter((g) => g.date && g.date.slice(0, 7) === currentPeriodKey());
+  const delMes = visibleExpenses().filter((g) => g.date && g.date.slice(0, 7) === currentPeriodKey());
   tbody.innerHTML = delMes
     .map(
       (g) => `
@@ -1450,7 +1495,7 @@ document.getElementById("pago-credito-fecha").value = todayISO();
 // calendario los gastos y pagos de SU tarjeta, nunca los de otra persona.
 function gastosCreditoDelCorte(periodKey) {
   if (!periodKey) return []; // sin corte configurado, no hay nada que agrupar
-  const uid = creditoViewUserId();
+  const uid = viewAsUserId();
   return state.expenses.filter(
     (g) =>
       g.payment_method === "Tarjeta de crédito" &&
@@ -1465,14 +1510,14 @@ function totalCorte(periodKey) {
 
 function pagadoCorte(periodKey) {
   if (!periodKey) return 0;
-  const uid = creditoViewUserId();
+  const uid = viewAsUserId();
   return state.creditPayments
     .filter((p) => p.period_key === periodKey && p.owner_id === uid)
     .reduce((s, p) => s + Number(p.amount || 0), 0);
 }
 
 function allCortePeriods() {
-  const uid = creditoViewUserId();
+  const uid = viewAsUserId();
   const keys = new Set([currentCorteKey()]);
   state.expenses.forEach((g) => {
     if (g.payment_method === "Tarjeta de crédito" && g.owner_id === uid && g.date)
@@ -1484,17 +1529,22 @@ function allCortePeriods() {
   return Array.from(keys).sort((a, b) => b.localeCompare(a));
 }
 
-// El selector "ver como" solo lo arma/usa el dueño — para cualquier otro
-// rol se queda oculto y creditoViewUserId() siempre regresa la suya propia.
-function renderCreditoVerComoSelector() {
-  const wrap = document.getElementById("credito-ver-como-wrap");
-  const sel = document.getElementById("credito-ver-como");
+// ============================================================
+// "VER COMO": el dueño puede elegir ver la cuenta de otra persona del
+// equipo — de solo lectura, sin poder registrar nada a su nombre. Todas las
+// vistas (Clientes, Ingresos, Gastos, Facturas, Tareas, Ahorro, Tarjeta de
+// crédito) usan viewAsUserId() para filtrar qué mostrar. El selector vive
+// una sola vez en la barra lateral — aplica a toda la app, no vista por vista.
+// ============================================================
+function renderVerComoSelector() {
+  const wrap = document.getElementById("ver-como-wrap");
+  const sel = document.getElementById("ver-como-select");
   if (!wrap || !sel) return;
 
   const esDueño = state.currentProfile && state.currentProfile.role === "owner";
   wrap.hidden = !esDueño;
   if (!esDueño) {
-    state.creditoViewAsId = null;
+    state.viewAsId = null;
     return;
   }
 
@@ -1503,27 +1553,42 @@ function renderCreditoVerComoSelector() {
     `<option value="">Yo mismo</option>` +
     otros.map((p) => `<option value="${p.id}">${p.full_name || p.email || "Sin nombre"}</option>`).join("");
   if (sel.innerHTML !== opciones) sel.innerHTML = opciones;
-  sel.value = state.creditoViewAsId || "";
+  sel.value = state.viewAsId || "";
 }
 
-document.getElementById("credito-ver-como").addEventListener("change", (e) => {
-  state.creditoViewAsId = e.target.value || null;
-  renderCreditoView();
+document.getElementById("ver-como-select").addEventListener("change", (e) => {
+  state.viewAsId = e.target.value || null;
+  renderAll();
 });
 
+// Oculta los formularios de "agregar/editar" (clase .solo-lectura-otro) y
+// muestra el aviso de arriba de todo cuando estás viendo la cuenta de otra
+// persona — se llama una sola vez por cada renderAll(), no por vista.
+function aplicarModoVerComo() {
+  renderVerComoSelector();
+  const viendoOtro = viewAsUserId() !== state.currentUserId;
+  document.querySelectorAll(".solo-lectura-otro").forEach((el) => {
+    el.hidden = viendoOtro;
+  });
+  const banner = document.getElementById("viendo-otro-banner");
+  if (banner) {
+    banner.hidden = !viendoOtro;
+    if (viendoOtro) {
+      const nombreEl = document.getElementById("viendo-otro-nombre");
+      const perfil = viewAsProfile();
+      if (nombreEl) nombreEl.textContent = (perfil && (perfil.full_name || perfil.email)) || "esta persona";
+    }
+  }
+  // Un solo interruptor a nivel de <body> — el CSS se encarga de esconder
+  // TODOS los botones de editar/eliminar/mover/vincular de cualquier tabla o
+  // tablero, sin tener que tocar cada plantilla de fila por separado.
+  document.body.classList.toggle("viendo-otro", viendoOtro);
+}
+
 function renderCreditoView() {
-  renderCreditoVerComoSelector();
-
-  const viendoOtro = creditoViewUserId() !== state.currentUserId;
-  const notaOtro = document.getElementById("credito-viendo-otro-nota");
-  const registrarWrap = document.getElementById("credito-registrar-pago-wrap");
-  const btnCalCreditoEl = document.getElementById("btn-add-credito-calendar");
-  if (notaOtro) notaOtro.hidden = !viendoOtro;
-  if (registrarWrap) registrarWrap.hidden = viendoOtro;
-  if (btnCalCreditoEl) btnCalCreditoEl.hidden = viendoOtro;
-
   const sinConfigurar = document.getElementById("credito-sin-configurar");
   const configWrap = document.getElementById("credito-config-wrap");
+  const viendoOtro = viewAsUserId() !== state.currentUserId;
   if (!creditoConfigurado()) {
     if (sinConfigurar) {
       sinConfigurar.hidden = false;
@@ -1577,7 +1642,7 @@ function renderCreditoView() {
 
   document.getElementById("tabla-pagos-credito").innerHTML =
     state.creditPayments
-      .filter((p) => p.owner_id === creditoViewUserId())
+      .filter((p) => p.owner_id === viewAsUserId())
       .slice()
       .sort((a, b) => b.date.localeCompare(a.date))
       .map(
@@ -1680,7 +1745,7 @@ function fondoName(id) {
 }
 
 function renderFondoSelect() {
-  document.getElementById("movimiento-fondo").innerHTML = state.savingsFunds
+  document.getElementById("movimiento-fondo").innerHTML = visibleSavingsFunds()
     .map((f) => `<option value="${f.id}">${f.name}</option>`)
     .join("");
 }
@@ -1690,7 +1755,7 @@ function renderAhorroView() {
 
   const tbodyFondos = document.getElementById("tabla-fondos");
   tbodyFondos.innerHTML =
-    state.savingsFunds
+    visibleSavingsFunds()
       .map((f) => {
         const acumulado = fondoAcumulado(f.id);
         let avance = "—";
@@ -1714,7 +1779,7 @@ function renderAhorroView() {
 
   const tbodyMovs = document.getElementById("tabla-movimientos");
   tbodyMovs.innerHTML =
-    state.savingsMoves
+    visibleSavingsMoves()
       .map(
         (m) => `
     <tr>
@@ -1824,9 +1889,11 @@ function resicoIsrRate(ingresoAcumuladoAnio) {
 
 function renderFacturasView() {
   // ---- Resumen IVA/ISR ----
-  const ivaTrasladado = state.invoicesIssued.reduce((s, f) => s + facturaEmitidaMontos(f).ivaAmount, 0);
-  const isrRetenido = state.invoicesIssued.reduce((s, f) => s + facturaEmitidaMontos(f).isrAmount, 0);
-  const ivaAcreditable = state.invoicesReceived.reduce((s, f) => s + facturaRecibidaMontos(f).ivaAmount, 0);
+  const facturasEmitidasVisibles = visibleInvoicesIssued();
+  const facturasRecibidasVisibles = visibleInvoicesReceived();
+  const ivaTrasladado = facturasEmitidasVisibles.reduce((s, f) => s + facturaEmitidaMontos(f).ivaAmount, 0);
+  const isrRetenido = facturasEmitidasVisibles.reduce((s, f) => s + facturaEmitidaMontos(f).isrAmount, 0);
+  const ivaAcreditable = facturasRecibidasVisibles.reduce((s, f) => s + facturaRecibidaMontos(f).ivaAmount, 0);
   const ivaNeto = ivaTrasladado - ivaAcreditable;
 
   document.getElementById("kpi-iva-trasladado").textContent = moneyExact(ivaTrasladado);
@@ -1841,7 +1908,7 @@ function renderFacturasView() {
   // Este panel solo aplica a quien tributa en RESICO. Si el perfil no tiene
   // régimen configurado (cuentas viejas, como la de Eduardo) se sigue mostrando
   // para no romper lo que ya existía; si el régimen es otro, se oculta.
-  const regimenActual = (state.currentProfile && state.currentProfile.tax_regime) || null;
+  const regimenActual = (viewAsProfile() && viewAsProfile().tax_regime) || null;
   const resicoPanel = document.getElementById("resico-panel");
   if (regimenActual && regimenActual !== "RESICO") {
     if (resicoPanel) resicoPanel.hidden = true;
@@ -1849,7 +1916,7 @@ function renderFacturasView() {
     if (resicoPanel) resicoPanel.hidden = false;
     const periodo = currentPeriodKey(); // "YYYY-MM"
     const anioActual = periodo.slice(0, 4);
-    const emitidasCobradas = state.invoicesIssued.filter((f) => f.status === "Cobrada" && f.date);
+    const emitidasCobradas = facturasEmitidasVisibles.filter((f) => f.status === "Cobrada" && f.date);
     const ingresoMes = emitidasCobradas
       .filter((f) => f.date.slice(0, 7) === periodo)
       .reduce((s, f) => s + facturaEmitidaMontos(f).subtotal, 0);
@@ -1874,7 +1941,7 @@ function renderFacturasView() {
   }
 
   // ---- Tabla: emitidas ----
-  const emitidasOrdenadas = state.invoicesIssued.slice().sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const emitidasOrdenadas = facturasEmitidasVisibles.slice().sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   document.getElementById("tabla-facturas-emitidas").innerHTML =
     emitidasOrdenadas
       .map((f) => {
@@ -1898,7 +1965,7 @@ function renderFacturasView() {
       .join("") || `<tr><td colspan="9" class="muted">Todavía no registras facturas emitidas.</td></tr>`;
 
   // ---- Tabla: recibidas ----
-  const recibidasOrdenadas = state.invoicesReceived.slice().sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const recibidasOrdenadas = facturasRecibidasVisibles.slice().sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   document.getElementById("tabla-facturas-recibidas").innerHTML =
     recibidasOrdenadas
       .map((f) => {
@@ -2005,6 +2072,7 @@ document.getElementById("factura-recibida-cancel-btn").addEventListener("click",
 // ============================================================
 document.addEventListener("click", (e) => {
   if (!e.target.matches(".btn-edit")) return;
+  if (viewAsUserId() !== state.currentUserId) return; // solo lectura mientras ves la cuenta de otra persona
   const { id, kind } = e.target.dataset;
 
   if (kind === "clients") {
@@ -2145,6 +2213,7 @@ document.addEventListener("click", (e) => {
 // ============================================================
 document.addEventListener("click", async (e) => {
   if (!e.target.matches(".btn-delete")) return;
+  if (viewAsUserId() !== state.currentUserId) return; // solo lectura mientras ves la cuenta de otra persona
   const { id, kind } = e.target.dataset;
   if (!confirm("¿Eliminar este registro?")) return;
   const { error } = await supabase.from(kind).delete().eq("id", id);
@@ -2162,7 +2231,7 @@ document.addEventListener("click", async (e) => {
 function renderHistoricoDetalle() {
   const periodo = currentPeriodKey();
 
-  const ingresosAnteriores = state.income
+  const ingresosAnteriores = visibleIncome()
     .filter((i) => i.date && i.date.slice(0, 7) !== periodo)
     .slice()
     .sort((a, b) => b.date.localeCompare(a.date));
@@ -2185,7 +2254,7 @@ function renderHistoricoDetalle() {
       )
       .join("") || `<tr><td colspan="7" class="muted">Todavía no hay meses anteriores registrados.</td></tr>`;
 
-  const gastosAnteriores = state.expenses
+  const gastosAnteriores = visibleExpenses()
     .filter((g) => g.date && g.date.slice(0, 7) !== periodo)
     .slice()
     .sort((a, b) => b.date.localeCompare(a.date));
@@ -2217,8 +2286,8 @@ let chartConcentracion, chartCanal;
 
 function renderDashboard() {
   const period = currentPeriodKey();
-  const incomePeriod = state.income.filter((i) => i.date && i.date.slice(0, 7) === period);
-  const expensesPeriod = state.expenses.filter((g) => g.date && g.date.slice(0, 7) === period);
+  const incomePeriod = visibleIncome().filter((i) => i.date && i.date.slice(0, 7) === period);
+  const expensesPeriod = visibleExpenses().filter((g) => g.date && g.date.slice(0, 7) === period);
 
   const totalIngresos = incomePeriod.reduce((s, i) => s + Number(i.amount || 0), 0);
   const totalGastos = expensesPeriod.reduce((s, g) => s + Number(g.amount || 0), 0);
@@ -2226,9 +2295,9 @@ function renderDashboard() {
   document.getElementById("kpi-ingresos").textContent = money(totalIngresos);
   document.getElementById("kpi-gastos").textContent = money(totalGastos);
   document.getElementById("kpi-utilidad").textContent = money(totalIngresos - totalGastos);
-  document.getElementById("kpi-clientes").textContent = state.clients.filter((c) => c.active).length;
-  document.getElementById("kpi-tareas").textContent = state.tasks.filter((t) => t.status !== "Hecho").length;
-  const ahorroTotal = state.savingsFunds.reduce((s, f) => s + fondoAcumulado(f.id), 0);
+  document.getElementById("kpi-clientes").textContent = visibleClients().filter((c) => c.active).length;
+  document.getElementById("kpi-tareas").textContent = visibleTasks().filter((t) => t.status !== "Hecho").length;
+  const ahorroTotal = visibleSavingsFunds().reduce((s, f) => s + fondoAcumulado(f.id), 0);
   document.getElementById("kpi-ahorro").textContent = money(ahorroTotal);
   if (creditoConfigurado()) {
     const saldoCreditoActual = totalCorte(currentCorteKey()) - pagadoCorte(currentCorteKey());
@@ -2239,7 +2308,7 @@ function renderDashboard() {
 
   // ---- Concentración de ingresos por cliente (todo el histórico, más representativo que solo el mes) ----
   const porCliente = {};
-  state.income.forEach((i) => {
+  visibleIncome().forEach((i) => {
     const key = i.client_id || "sin-cliente";
     porCliente[key] = (porCliente[key] || 0) + Number(i.amount || 0);
   });
@@ -2285,7 +2354,7 @@ function renderDashboard() {
 
   // ---- Rentabilidad (ingresos) por canal de origen ----
   const porCanal = {};
-  state.income.forEach((i) => {
+  visibleIncome().forEach((i) => {
     porCanal[i.type] = (porCanal[i.type] || 0) + Number(i.amount || 0);
   });
   const canalEntries = Object.entries(porCanal).sort((a, b) => b[1] - a[1]);
@@ -2305,10 +2374,10 @@ function renderDashboard() {
   });
 
   // ---- Proyección recurrente mensual ----
-  const ingresoRecurrente = state.income
+  const ingresoRecurrente = visibleIncome()
     .filter((i) => i.is_recurring)
     .reduce((s, i) => s + Number(i.amount || 0), 0);
-  const gastoRecurrente = state.expenses
+  const gastoRecurrente = visibleExpenses()
     .filter((g) => g.recurrence === "Mensual")
     .reduce((s, g) => s + Number(g.amount || 0), 0);
   document.getElementById("proyeccion-recurrente").innerHTML = `
@@ -2318,9 +2387,9 @@ function renderDashboard() {
   `;
 
   // ---- Utilidad por cliente ----
-  const utilidadPorCliente = state.clients.map((c) => {
-    const ingresosC = state.income.filter((i) => i.client_id === c.id).reduce((s, i) => s + Number(i.amount || 0), 0);
-    const gastosC = state.expenses.filter((g) => g.client_id === c.id).reduce((s, g) => s + Number(g.amount || 0), 0);
+  const utilidadPorCliente = visibleClients().map((c) => {
+    const ingresosC = visibleIncome().filter((i) => i.client_id === c.id).reduce((s, i) => s + Number(i.amount || 0), 0);
+    const gastosC = visibleExpenses().filter((g) => g.client_id === c.id).reduce((s, g) => s + Number(g.amount || 0), 0);
     return { name: c.name, utilidad: ingresosC - gastosC };
   }).sort((a, b) => b.utilidad - a.utilidad);
   document.getElementById("utilidad-cliente").innerHTML =
@@ -2332,7 +2401,7 @@ function renderDashboard() {
       .join("") || `<p class="muted">Todavía no hay clientes con movimientos.</p>`;
 
   // ---- Próximos pendientes (tareas activas, ordenadas por fecha límite) ----
-  const proximas = state.tasks
+  const proximas = visibleTasks()
     .filter((t) => t.status !== "Hecho")
     .slice()
     .sort((a, b) => {
@@ -2352,13 +2421,13 @@ function renderDashboard() {
 
   // ---- Histórico mensual (ingresos + gastos + utilidad, todos los meses con movimientos) ----
   const porMes = {};
-  state.income.forEach((i) => {
+  visibleIncome().forEach((i) => {
     if (!i.date) return;
     const mes = i.date.slice(0, 7);
     porMes[mes] = porMes[mes] || { ingresos: 0, gastos: 0 };
     porMes[mes].ingresos += Number(i.amount || 0);
   });
-  state.expenses.forEach((g) => {
+  visibleExpenses().forEach((g) => {
     if (!g.date) return;
     const mes = g.date.slice(0, 7);
     porMes[mes] = porMes[mes] || { ingresos: 0, gastos: 0 };

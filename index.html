@@ -119,6 +119,10 @@
       </div>
     </nav>
     <div class="sidebar-footer">
+      <div id="ver-como-wrap" class="ver-como-wrap" hidden>
+        <label for="ver-como-select">Ver cuenta de</label>
+        <select id="ver-como-select"></select>
+      </div>
       <button id="user-info" class="user-info" hidden></button>
       <button id="btn-privacy-toggle" class="btn-logout btn-privacy">🙈 Ocultar ingresos</button>
       <button id="logout-btn" class="btn-logout">Cerrar sesión</button>
@@ -227,6 +231,10 @@
 
   <main class="main">
 
+    <div id="viendo-otro-banner" class="viendo-otro-banner" hidden>
+      👁️ Estás viendo la cuenta de <strong id="viendo-otro-nombre"></strong> — modo de solo lectura. Nadie más que tú, como dueño, puede ver esto.
+    </div>
+
     <!-- ---------- INICIO / BIENVENIDA ---------- -->
     <section id="view-inicio" class="view">
       <header class="view-header inicio-header">
@@ -327,7 +335,7 @@
         <p class="muted">Da de alta a un cliente aquí antes de registrarle ingresos o gastos.</p>
       </header>
 
-      <div class="panel">
+      <div class="panel solo-lectura-otro">
         <h3>Nuevo cliente</h3>
         <form id="form-cliente" class="form-inline">
           <input type="hidden" id="cliente-id">
@@ -356,7 +364,7 @@
         <p class="muted">Trabajo y personal, todo en un solo lugar.</p>
       </header>
 
-      <div class="panel">
+      <div class="panel solo-lectura-otro">
         <form id="form-tarea" class="form-grid">
           <input type="hidden" id="tarea-id">
           <div><label>Título</label><input type="text" id="tarea-titulo" required></div>
@@ -433,7 +441,7 @@
         <p class="muted">El historial de abajo muestra solo el mes en curso. Los meses anteriores se guardan en Histórico.</p>
       </header>
 
-      <div class="panel">
+      <div class="panel solo-lectura-otro" id="ingresos-form-wrap">
         <form id="form-ingreso" class="form-grid">
           <input type="hidden" id="ingreso-id">
           <div><label>Cliente</label><select id="ingreso-cliente" required></select></div>
@@ -495,7 +503,7 @@
         <p class="muted">El historial de abajo muestra solo el mes en curso. Los meses anteriores se guardan en Histórico.</p>
       </header>
 
-      <div class="panel">
+      <div class="panel solo-lectura-otro">
         <form id="form-gasto" class="form-grid">
           <input type="hidden" id="gasto-id">
           <div><label>Descripción</label><input type="text" id="gasto-descripcion" required></div>
@@ -582,7 +590,7 @@
       </div>
 
       <!-- ---- Emitidas ---- -->
-      <div class="panel">
+      <div class="panel solo-lectura-otro">
         <h3>Nueva factura emitida</h3>
         <p class="muted" style="margin-top: -8px;">El % de IVA e ISR depende de cada cliente — captúralo caso por caso (ej. algunos clientes solo retienen ISR y no llevan IVA). Abajo se prellenan tus tasas por default configuradas en "Mi perfil"; si aún no las configuras, se usa 16% de IVA y 1.25% de ISR (la referencia más común para RESICO cuando quien te paga es una persona moral) — siempre puedes cambiarlo en cada factura y confirmarlo con tu contador.</p>
         <form id="form-factura-emitida" class="form-grid">
@@ -617,7 +625,7 @@
       </div>
 
       <!-- ---- Recibidas ---- -->
-      <div class="panel">
+      <div class="panel solo-lectura-otro">
         <h3>Nueva factura recibida</h3>
         <p class="muted" style="margin-top: -8px;">Facturas que te dan tus proveedores — para calcular el IVA que puedes acreditar. Captura el total tal cual viene en la factura (con IVA incluido) y la app calcula el IVA por ti.</p>
         <form id="form-factura-recibida" class="form-grid">
@@ -658,12 +666,6 @@
         <p class="muted">Agrupa tus gastos con método "Tarjeta de crédito" por corte y lleva el control de tus pagos. El día de corte y el día límite de pago son los que configures en "Mi perfil" — cada quien puede poner los de su propia tarjeta.</p>
       </header>
 
-      <div class="panel" id="credito-ver-como-wrap" hidden>
-        <label>Ver la tarjeta de crédito de</label>
-        <select id="credito-ver-como"></select>
-        <p class="muted" style="margin-top:4px;">Solo tú, como dueño, puedes ver la tarjeta de otra persona — cada colaborador sigue viendo únicamente la suya.</p>
-      </div>
-
       <div class="panel" id="credito-sin-configurar" hidden>
         <h3>Todavía no configuras tu tarjeta</h3>
         <p class="muted">Pon el día de corte y el día límite de pago de tu tarjeta en "Mi perfil" (barra lateral, donde sale tu nombre) para activar esta sección.</p>
@@ -673,7 +675,7 @@
       <div class="panel">
         <div class="panel-header-row">
           <h3 id="credito-corte-label">Corte actual</h3>
-          <button id="btn-add-credito-calendar" class="btn-calendar">📅 Agregar corte y pago al calendario</button>
+          <button id="btn-add-credito-calendar" class="btn-calendar solo-lectura-otro">📅 Agregar corte y pago al calendario</button>
         </div>
         <div class="kpi-row kpi-row-4">
           <div class="kpi-card">
@@ -705,11 +707,7 @@
         </div>
       </div>
 
-      <div class="panel" id="credito-viendo-otro-nota" hidden>
-        <p class="muted">Estás viendo la tarjeta de otra persona — aquí solo puedes consultar, no registrar pagos ni agregar al calendario a nombre suyo.</p>
-      </div>
-
-      <div class="panel" id="credito-registrar-pago-wrap">
+      <div class="panel solo-lectura-otro" id="credito-registrar-pago-wrap">
         <h3>Registrar pago quincenal</h3>
         <form id="form-pago-credito" class="form-grid">
           <input type="hidden" id="pago-credito-id">
@@ -759,7 +757,7 @@
         <p class="muted">Crea uno o varios fondos y ve registrando depósitos y retiros.</p>
       </header>
 
-      <div class="panel">
+      <div class="panel solo-lectura-otro">
         <h3>Nuevo fondo</h3>
         <form id="form-fondo" class="form-grid">
           <input type="hidden" id="fondo-id">
@@ -782,7 +780,7 @@
         </div>
       </div>
 
-      <div class="panel">
+      <div class="panel solo-lectura-otro">
         <h3>Registrar movimiento</h3>
         <form id="form-movimiento" class="form-grid">
           <input type="hidden" id="movimiento-id">
