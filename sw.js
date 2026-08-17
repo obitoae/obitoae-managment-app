@@ -1,9 +1,12 @@
 // Service worker de Obitoae Management — guarda en caché el "cascarón" de la
-// app (HTML/CSS/JS) para que abra rápido y funcione algo sin conexión. Las
-// llamadas a Supabase y a las funciones /api/* SIEMPRE van directo a la red
-// (nunca se cachean), para que los datos siempre estén al día.
-
-const CACHE_NAME = "obitoae-shell-v2";
+// app (HTML/CSS/JS) como respaldo para cuando no hay conexión. Las llamadas a
+// Supabase y a las funciones /api/* SIEMPRE van directo a la red (nunca se
+// cachean), para que los datos siempre estén al día.
+//
+// Importante: sube este número (v3, v4, ...) cada vez que subas un cambio de
+// código, para que los navegadores/celulares que ya tenían la app instalada
+// se enteren de que hay una versión nueva.
+const CACHE_NAME = "obitoae-shell-v3";
 const SHELL_FILES = [
   "/",
   "/index.html",
@@ -24,11 +27,10 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    )
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
 self.addEventListener("fetch", (event) => {
@@ -44,18 +46,17 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Red primero, caché solo como respaldo (sin conexión) — así cada cambio
+  // que subas se ve de inmediato, sin tener que recargar varias veces.
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const network = fetch(event.request)
-        .then((response) => {
-          if (response && response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          }
-          return response;
-        })
-        .catch(() => cached);
-      return cached || network;
-    })
+    fetch(event.request)
+      .then((response) => {
+        if (response && response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
