@@ -358,8 +358,11 @@ function animateCoverName() {
   el.innerHTML = text
     .split("")
     .map((ch, i) => {
-      const display = ch === " " ? "&nbsp;" : ch;
-      return `<span class="cover-letter" style="animation-delay:${(i * 0.035).toFixed(3)}s">${display}</span>`;
+      // Espacio normal (no &nbsp;) para que el navegador SÍ pueda cortar la
+      // línea entre palabras — si no, "Valentin" se puede partir a la mitad
+      // en pantallas angostas por no tener dónde más cortar.
+      if (ch === " ") return " ";
+      return `<span class="cover-letter" style="animation-delay:${(i * 0.035).toFixed(3)}s">${ch}</span>`;
     })
     .join("");
 }
