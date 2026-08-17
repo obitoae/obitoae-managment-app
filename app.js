@@ -256,6 +256,22 @@ async function loadCurrentProfile() {
   if (typeof refreshPrivacyUI === "function") refreshPrivacyUI();
 }
 
+// Portada: efecto de entrada letra por letra para el nombre — se reconstruye
+// cada vez que se muestra la portada, para que la animación se repita.
+function animateCoverName() {
+  const el = document.getElementById("cover-name");
+  if (!el) return;
+  if (!el.dataset.text) el.dataset.text = el.textContent;
+  const text = el.dataset.text;
+  el.innerHTML = text
+    .split("")
+    .map((ch, i) => {
+      const display = ch === " " ? "&nbsp;" : ch;
+      return `<span class="cover-letter" style="animation-delay:${(i * 0.035).toFixed(3)}s">${display}</span>`;
+    })
+    .join("");
+}
+
 // Portada: se muestra siempre después de entrar, antes de la app. Los datos
 // se cargan de fondo mientras el usuario la ve, así que al tocar "Ingresar"
 // todo ya está listo.
@@ -263,6 +279,7 @@ async function showApp() {
   loginScreen.hidden = true;
   appEl.hidden = true;
   coverScreen.hidden = false;
+  animateCoverName();
   document.getElementById("cover-fecha").textContent = fechaLargaHoy();
   await loadCurrentProfile();
 
