@@ -59,13 +59,30 @@ function downloadICS(filename, events) {
 // persona, desde "Mi perfil" — si alguien no los configura, no hay ningún
 // valor por default: la sección de Tarjeta de crédito simplemente le pide
 // que los configure antes de mostrar nada.
+// La tarjeta de crédito es personal — cada quien ve y configura la suya.
+// La única excepción: el dueño puede elegir "ver como" otra persona del
+// equipo (selector en la vista de Tarjeta de crédito), y mientras esa
+// selección esté activa, estas funciones leen el perfil y los datos de la
+// persona elegida en vez de los del dueño.
+function creditoViewUserId() {
+  return (state.currentProfile && state.currentProfile.role === "owner" && state.creditoViewAsId) || state.currentUserId;
+}
+
+function creditoViewProfile() {
+  const id = creditoViewUserId();
+  if (id === state.currentUserId) return state.currentProfile;
+  return state.profiles.find((p) => p.id === id) || state.currentProfile;
+}
+
 function getCorteDay() {
-  const d = state.currentProfile && Number(state.currentProfile.credit_cutoff_day);
+  const perfil = creditoViewProfile();
+  const d = perfil && Number(perfil.credit_cutoff_day);
   return d && d >= 1 && d <= 31 ? d : null;
 }
 
 function getDueDay() {
-  const d = state.currentProfile && Number(state.currentProfile.credit_due_day);
+  const perfil = creditoViewProfile();
+  const d = perfil && Number(perfil.credit_due_day);
   return d && d >= 1 && d <= 31 ? d : null;
 }
 
@@ -285,6 +302,10 @@ let state = {
   profiles: [],
   currentUserId: null,
   currentProfile: null, // { id, email, full_name, role }
+  // Solo el dueño puede cambiar esto — le permite ver la tarjeta de crédito
+  // de otra persona del equipo. Para cualquier otro rol siempre queda en
+  // null (o sea, "la mía"). Se resetea al cerrar sesión.
+  creditoViewAsId: null,
 };
 
 // ============================================================
@@ -322,6 +343,7 @@ async function loadCurrentProfile() {
     return;
   }
   state.currentUserId = user.id;
+  state.creditoViewAsId = null;
 
   const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle();
   state.currentProfile = profile || { id: user.id, email: user.email, full_name: null, role: "member" };
@@ -1109,7 +1131,7 @@ function tareaCardHTML(t) {
       </div>
       <div class="kanban-card-actions">
         ${moveButtons.join("")}
-        ${t.due_date && t.status !== "Hecho" && t.owner_id === state.currentUserId ? `<button class="btn-calendar" data-id="${t.id}" data-kind="task">📅 Calendario</button>` : ""}
+        ${t.due_date && t.status !== "Hecho" && (t.owner_id === state.currentUserId || (state.currentProfile && state.currentProfile.role === "owner")) ? `<button class="btn-calendar" data-id="${t.id}" data-kind="task">📅 Calendario</button>` : ""}
         <button class="btn-edit" data-id="${t.id}" data-kind="tasks">Editar</button>
         <button class="btn-delete" data-id="${t.id}" data-kind="tasks">Eliminar</button>
       </div>
@@ -1428,10 +1450,11 @@ document.getElementById("pago-credito-fecha").value = todayISO();
 // calendario los gastos y pagos de SU tarjeta, nunca los de otra persona.
 function gastosCreditoDelCorte(periodKey) {
   if (!periodKey) return []; // sin corte configurado, no hay nada que agrupar
+  const uid = creditoViewUserId();
   return state.expenses.filter(
     (g) =>
       g.payment_method === "Tarjeta de crédito" &&
-      g.owner_id === state.currentUserId &&
+      g.owner_id === uid &&
       cortePeriodKey(g.date) === periodKey
   );
 }
@@ -1442,28 +1465,75 @@ function totalCorte(periodKey) {
 
 function pagadoCorte(periodKey) {
   if (!periodKey) return 0;
+  const uid = creditoViewUserId();
   return state.creditPayments
-    .filter((p) => p.period_key === periodKey && p.owner_id === state.currentUserId)
+    .filter((p) => p.period_key === periodKey && p.owner_id === uid)
     .reduce((s, p) => s + Number(p.amount || 0), 0);
 }
 
 function allCortePeriods() {
+  const uid = creditoViewUserId();
   const keys = new Set([currentCorteKey()]);
   state.expenses.forEach((g) => {
-    if (g.payment_method === "Tarjeta de crédito" && g.owner_id === state.currentUserId && g.date)
+    if (g.payment_method === "Tarjeta de crédito" && g.owner_id === uid && g.date)
       keys.add(cortePeriodKey(g.date));
   });
   state.creditPayments.forEach((p) => {
-    if (p.owner_id === state.currentUserId) keys.add(p.period_key);
+    if (p.owner_id === uid) keys.add(p.period_key);
   });
   return Array.from(keys).sort((a, b) => b.localeCompare(a));
 }
 
+// El selector "ver como" solo lo arma/usa el dueño — para cualquier otro
+// rol se queda oculto y creditoViewUserId() siempre regresa la suya propia.
+function renderCreditoVerComoSelector() {
+  const wrap = document.getElementById("credito-ver-como-wrap");
+  const sel = document.getElementById("credito-ver-como");
+  if (!wrap || !sel) return;
+
+  const esDueño = state.currentProfile && state.currentProfile.role === "owner";
+  wrap.hidden = !esDueño;
+  if (!esDueño) {
+    state.creditoViewAsId = null;
+    return;
+  }
+
+  const otros = state.profiles.filter((p) => p.id !== state.currentUserId && p.role !== "client");
+  const opciones =
+    `<option value="">Yo mismo</option>` +
+    otros.map((p) => `<option value="${p.id}">${p.full_name || p.email || "Sin nombre"}</option>`).join("");
+  if (sel.innerHTML !== opciones) sel.innerHTML = opciones;
+  sel.value = state.creditoViewAsId || "";
+}
+
+document.getElementById("credito-ver-como").addEventListener("change", (e) => {
+  state.creditoViewAsId = e.target.value || null;
+  renderCreditoView();
+});
+
 function renderCreditoView() {
+  renderCreditoVerComoSelector();
+
+  const viendoOtro = creditoViewUserId() !== state.currentUserId;
+  const notaOtro = document.getElementById("credito-viendo-otro-nota");
+  const registrarWrap = document.getElementById("credito-registrar-pago-wrap");
+  const btnCalCreditoEl = document.getElementById("btn-add-credito-calendar");
+  if (notaOtro) notaOtro.hidden = !viendoOtro;
+  if (registrarWrap) registrarWrap.hidden = viendoOtro;
+  if (btnCalCreditoEl) btnCalCreditoEl.hidden = viendoOtro;
+
   const sinConfigurar = document.getElementById("credito-sin-configurar");
   const configWrap = document.getElementById("credito-config-wrap");
   if (!creditoConfigurado()) {
-    if (sinConfigurar) sinConfigurar.hidden = false;
+    if (sinConfigurar) {
+      sinConfigurar.hidden = false;
+      const p = sinConfigurar.querySelector("p");
+      if (p) {
+        p.textContent = viendoOtro
+          ? "Esta persona todavía no configura el día de corte y el día límite de pago de su tarjeta en su propio perfil."
+          : "Pon el día de corte y el día límite de pago de tu tarjeta en \"Mi perfil\" (barra lateral, donde sale tu nombre) para activar esta sección.";
+      }
+    }
     if (configWrap) configWrap.hidden = true;
     return;
   }
@@ -1507,7 +1577,7 @@ function renderCreditoView() {
 
   document.getElementById("tabla-pagos-credito").innerHTML =
     state.creditPayments
-      .filter((p) => p.owner_id === state.currentUserId)
+      .filter((p) => p.owner_id === creditoViewUserId())
       .slice()
       .sort((a, b) => b.date.localeCompare(a.date))
       .map(
