@@ -164,6 +164,7 @@ let state = {
   creditPayments: [],
   invoicesIssued: [],
   invoicesReceived: [],
+  profiles: [],
   currentUserId: null,
   currentProfile: null, // { id, email, full_name, role }
 };
@@ -207,15 +208,20 @@ async function loadCurrentProfile() {
   const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle();
   state.currentProfile = profile || { id: user.id, email: user.email, full_name: null, role: "member" };
 
+  const nombre = state.currentProfile.full_name || state.currentProfile.email || "";
+
   const infoEl = document.getElementById("user-info");
   if (infoEl) {
-    const nombre = state.currentProfile.full_name || state.currentProfile.email || "";
-    const esDueno = state.currentProfile.role === "owner";
+    const roleLabels = { owner: "Dueño", member: "Colaborador", client: "Cliente" };
+    const roleClass = { owner: "", member: "member", client: "client" };
+    const role = state.currentProfile.role || "member";
     infoEl.innerHTML =
-      `<span>${nombre}</span>` +
-      `<span class="user-role-tag${esDueno ? "" : " member"}">${esDueno ? "Dueño" : "Colaborador"}</span>`;
+      `<span>${nombre}</span>` + `<span class="user-role-tag ${roleClass[role] || ""}">${roleLabels[role] || role}</span>`;
     infoEl.hidden = false;
   }
+
+  const coverNameEl = document.getElementById("cover-name");
+  if (coverNameEl && nombre) coverNameEl.textContent = nombre;
 }
 
 // Portada: se muestra siempre después de entrar, antes de la app. Los datos
@@ -227,6 +233,14 @@ async function showApp() {
   coverScreen.hidden = false;
   document.getElementById("cover-fecha").textContent = fechaLargaHoy();
   await loadCurrentProfile();
+
+  // Las cuentas de cliente tienen su propio portal, muy distinto a la app
+  // interna — no cargan ni ven nada de esto.
+  if (state.currentProfile && state.currentProfile.role === "client") {
+    window.location.href = "portal.html";
+    return;
+  }
+
   await loadAll();
   renderAll();
 }
@@ -291,6 +305,7 @@ btnShowLogin.addEventListener("click", () => {
 
 signupFormEl.addEventListener("submit", async (e) => {
   e.preventDefault();
+  const fullName = document.getElementById("signup-name").value.trim();
   const email = document.getElementById("signup-email").value.trim();
   const password = document.getElementById("signup-password").value;
   const errEl = document.getElementById("signup-error");
@@ -300,7 +315,13 @@ signupFormEl.addEventListener("submit", async (e) => {
 
   const submitBtn = document.querySelector("#signup-form button[type='submit']");
   if (submitBtn) submitBtn.classList.add("btn-loading");
-  const { data, error } = await supabase.auth.signUp({ email, password });
+  // El nombre viaja como metadato del registro — el trigger de Supabase lo
+  // guarda solo en el perfil en cuanto se crea la cuenta.
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { data: { full_name: fullName } },
+  });
   if (submitBtn) submitBtn.classList.remove("btn-loading");
 
   if (error) {
@@ -328,6 +349,58 @@ document.getElementById("logout-btn").addEventListener("click", async () => {
   const infoEl = document.getElementById("user-info");
   if (infoEl) infoEl.hidden = true;
   showLogin();
+});
+
+// ============================================================
+// MI PERFIL (nombre, contraseña de privacidad personal, régimen fiscal)
+// ============================================================
+const perfilModal = document.getElementById("perfil-modal");
+const perfilRegimenWrap = document.getElementById("perfil-regimen-wrap");
+
+document.getElementById("user-info").addEventListener("click", () => {
+  if (!state.currentProfile) return;
+  document.getElementById("perfil-nombre").value = state.currentProfile.full_name || "";
+  document.getElementById("perfil-privacy-password").value = state.currentProfile.privacy_password || "";
+  document.getElementById("perfil-regimen").value = state.currentProfile.tax_regime || "";
+  document.getElementById("perfil-iva-default").value = state.currentProfile.default_iva_rate ?? "";
+  document.getElementById("perfil-isr-default").value = state.currentProfile.default_isr_rate ?? "";
+  // El régimen fiscal / tasas de factura solo aplican a quien factura
+  // (dueño y colaboradores) — un cliente no necesita configurar esto.
+  perfilRegimenWrap.hidden = state.currentProfile.role === "client";
+  document.getElementById("perfil-error").hidden = true;
+  perfilModal.hidden = false;
+});
+
+document.getElementById("perfil-cancel-btn").addEventListener("click", () => {
+  perfilModal.hidden = true;
+});
+
+document.getElementById("form-perfil").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById("perfil-error");
+  errEl.hidden = true;
+
+  const update = {
+    full_name: document.getElementById("perfil-nombre").value.trim() || null,
+    privacy_password: document.getElementById("perfil-privacy-password").value || null,
+    tax_regime: document.getElementById("perfil-regimen").value || null,
+    default_iva_rate: document.getElementById("perfil-iva-default").value
+      ? Number(document.getElementById("perfil-iva-default").value)
+      : null,
+    default_isr_rate: document.getElementById("perfil-isr-default").value
+      ? Number(document.getElementById("perfil-isr-default").value)
+      : null,
+  };
+
+  const { error } = await supabase.from("profiles").update(update).eq("id", state.currentUserId);
+  if (error) {
+    errEl.textContent = "No se pudo guardar: " + error.message;
+    errEl.hidden = false;
+    return;
+  }
+
+  perfilModal.hidden = true;
+  await loadCurrentProfile();
 });
 
 // ============================================================
@@ -390,6 +463,7 @@ function loadAllQueries() {
     supabase.from("credit_payments").select("*").order("date", { ascending: false }),
     supabase.from("invoices_issued").select("*").order("date", { ascending: false }),
     supabase.from("invoices_received").select("*").order("date", { ascending: false }),
+    supabase.from("profiles").select("*").order("full_name"),
   ];
 }
 
@@ -404,6 +478,7 @@ async function loadAll() {
     "credit_payments",
     "invoices_issued",
     "invoices_received",
+    "profiles",
   ];
   let results = await Promise.all(loadAllQueries());
 
@@ -443,6 +518,7 @@ async function loadAll() {
     { data: creditPayments },
     { data: invoicesIssued },
     { data: invoicesReceived },
+    { data: profiles },
   ] = results;
   state.clients = clients || [];
   state.income = income || [];
@@ -453,6 +529,7 @@ async function loadAll() {
   state.creditPayments = creditPayments || [];
   state.invoicesIssued = invoicesIssued || [];
   state.invoicesReceived = invoicesReceived || [];
+  state.profiles = profiles || [];
 }
 
 function clientName(id) {
@@ -628,20 +705,80 @@ function renderClientSelects() {
 
 function renderClientesView() {
   const tbody = document.getElementById("tabla-clientes");
+  const esDueno = state.currentProfile && state.currentProfile.role === "owner";
+  // Cuentas que se pueden vincular a un cliente: no son el dueño, y no están
+  // ya vinculadas a OTRO cliente distinto de este.
+  const perfiles = state.profiles || [];
   tbody.innerHTML = state.clients
-    .map(
-      (c) => `
+    .map((c) => {
+      const vinculado = perfiles.find((p) => p.client_id === c.id);
+      let portalCell;
+      if (vinculado) {
+        portalCell = `<span class="ing-amount">${vinculado.full_name || vinculado.email || "Cuenta vinculada"}</span>`;
+        if (esDueno) {
+          portalCell += ` <button class="btn-delete btn-desvincular" data-client-id="${c.id}" data-profile-id="${vinculado.id}">Desvincular</button>`;
+        }
+      } else if (esDueno) {
+        const disponibles = perfiles.filter((p) => p.role !== "owner" && !p.client_id);
+        if (disponibles.length) {
+          const opts = disponibles
+            .map((p) => `<option value="${p.id}">${p.full_name || p.email}</option>`)
+            .join("");
+          portalCell = `
+            <select class="select-vincular" data-client-id="${c.id}">
+              <option value="">— Elegir cuenta —</option>
+              ${opts}
+            </select>
+            <button class="btn-edit btn-vincular" data-client-id="${c.id}">Vincular</button>`;
+        } else {
+          portalCell = `<span class="muted">Sin cuentas disponibles</span>`;
+        }
+      } else {
+        portalCell = `<span class="muted">—</span>`;
+      }
+      return `
     <tr>
       <td class="ing-amount">${c.name}</td>
       <td>${c.notes || ""}</td>
       <td>${c.active ? "Sí" : "No"}</td>
+      <td>${portalCell}</td>
       <td>
         <button class="btn-edit" data-id="${c.id}" data-kind="clients">Editar</button>
         <button class="btn-delete" data-id="${c.id}" data-kind="clients">Eliminar</button>
       </td>
-    </tr>`
-    )
+    </tr>`;
+    })
     .join("");
+
+  tbody.querySelectorAll(".btn-vincular").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const clientId = btn.dataset.clientId;
+      const select = tbody.querySelector(`.select-vincular[data-client-id="${clientId}"]`);
+      const profileId = select ? select.value : "";
+      if (!profileId) return;
+      const { error } = await supabase.from("profiles").update({ role: "client", client_id: clientId }).eq("id", profileId);
+      if (error) {
+        alert("No se pudo vincular la cuenta: " + error.message);
+        return;
+      }
+      await loadAll();
+      renderAll();
+    });
+  });
+
+  tbody.querySelectorAll(".btn-desvincular").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const profileId = btn.dataset.profileId;
+      if (!confirm("¿Quitarle a esta cuenta el acceso al portal de este cliente?")) return;
+      const { error } = await supabase.from("profiles").update({ role: "member", client_id: null }).eq("id", profileId);
+      if (error) {
+        alert("No se pudo desvincular la cuenta: " + error.message);
+        return;
+      }
+      await loadAll();
+      renderAll();
+    });
+  });
 }
 
 function resetClienteForm() {
@@ -1344,30 +1481,40 @@ function renderFacturasView() {
     "El % de IVA/ISR de cada factura se captura manualmente porque varía según el cliente (ej. con clientes que solo retienen ISR, deja el % de IVA en 0).";
 
   // ---- ISR retenido (a tu favor) vs. ISR que tú pagas (pago provisional RESICO) ----
-  const periodo = currentPeriodKey(); // "YYYY-MM"
-  const anioActual = periodo.slice(0, 4);
-  const emitidasCobradas = state.invoicesIssued.filter((f) => f.status === "Cobrada" && f.date);
-  const ingresoMes = emitidasCobradas
-    .filter((f) => f.date.slice(0, 7) === periodo)
-    .reduce((s, f) => s + facturaEmitidaMontos(f).subtotal, 0);
-  const ingresoAcumuladoAnio = emitidasCobradas
-    .filter((f) => f.date.slice(0, 4) === anioActual)
-    .reduce((s, f) => s + facturaEmitidaMontos(f).subtotal, 0);
-  const tasaResico = resicoIsrRate(ingresoAcumuladoAnio);
-  const isrCausadoMes = (ingresoMes * tasaResico) / 100;
-  const isrRetenidoMes = emitidasCobradas
-    .filter((f) => f.date.slice(0, 7) === periodo)
-    .reduce((s, f) => s + facturaEmitidaMontos(f).isrAmount, 0);
-  const isrNetoAPagar = isrCausadoMes - isrRetenidoMes;
+  // Este panel solo aplica a quien tributa en RESICO. Si el perfil no tiene
+  // régimen configurado (cuentas viejas, como la de Eduardo) se sigue mostrando
+  // para no romper lo que ya existía; si el régimen es otro, se oculta.
+  const regimenActual = (state.currentProfile && state.currentProfile.tax_regime) || null;
+  const resicoPanel = document.getElementById("resico-panel");
+  if (regimenActual && regimenActual !== "RESICO") {
+    if (resicoPanel) resicoPanel.hidden = true;
+  } else {
+    if (resicoPanel) resicoPanel.hidden = false;
+    const periodo = currentPeriodKey(); // "YYYY-MM"
+    const anioActual = periodo.slice(0, 4);
+    const emitidasCobradas = state.invoicesIssued.filter((f) => f.status === "Cobrada" && f.date);
+    const ingresoMes = emitidasCobradas
+      .filter((f) => f.date.slice(0, 7) === periodo)
+      .reduce((s, f) => s + facturaEmitidaMontos(f).subtotal, 0);
+    const ingresoAcumuladoAnio = emitidasCobradas
+      .filter((f) => f.date.slice(0, 4) === anioActual)
+      .reduce((s, f) => s + facturaEmitidaMontos(f).subtotal, 0);
+    const tasaResico = resicoIsrRate(ingresoAcumuladoAnio);
+    const isrCausadoMes = (ingresoMes * tasaResico) / 100;
+    const isrRetenidoMes = emitidasCobradas
+      .filter((f) => f.date.slice(0, 7) === periodo)
+      .reduce((s, f) => s + facturaEmitidaMontos(f).isrAmount, 0);
+    const isrNetoAPagar = isrCausadoMes - isrRetenidoMes;
 
-  document.getElementById("facturas-isr-resico").innerHTML = `
-    <div class="stat-row"><span>Ingresos cobrados este mes</span><span class="amount ing-amount">${moneyExact(ingresoMes)}</span></div>
-    <div class="stat-row"><span>Ingreso acumulado del año (define tu tasa)</span><span class="amount ing-amount">${moneyExact(ingresoAcumuladoAnio)}</span></div>
-    <div class="stat-row"><span>Tasa RESICO aplicable</span><span class="amount ing-amount">${tasaResico}%</span></div>
-    <div class="stat-row"><span>ISR causado del mes (tasa × cobrado)</span><span class="amount ing-amount">${moneyExact(isrCausadoMes)}</span></div>
-    <div class="stat-row"><span>− ISR retenido este mes (a tu favor)</span><span class="amount ing-amount">${moneyExact(isrRetenidoMes)}</span></div>
-    <div class="stat-row"><span><strong>${isrNetoAPagar >= 0 ? "ISR neto a pagar" : "ISR a favor (saldo para el próximo mes)"}</strong></span><span class="amount ing-amount ${isrNetoAPagar >= 0 ? "negative" : "positive"}"><strong>${moneyExact(Math.abs(isrNetoAPagar))}</strong></span></div>
-  `;
+    document.getElementById("facturas-isr-resico").innerHTML = `
+      <div class="stat-row"><span>Ingresos cobrados este mes</span><span class="amount ing-amount">${moneyExact(ingresoMes)}</span></div>
+      <div class="stat-row"><span>Ingreso acumulado del año (define tu tasa)</span><span class="amount ing-amount">${moneyExact(ingresoAcumuladoAnio)}</span></div>
+      <div class="stat-row"><span>Tasa RESICO aplicable</span><span class="amount ing-amount">${tasaResico}%</span></div>
+      <div class="stat-row"><span>ISR causado del mes (tasa × cobrado)</span><span class="amount ing-amount">${moneyExact(isrCausadoMes)}</span></div>
+      <div class="stat-row"><span>− ISR retenido este mes (a tu favor)</span><span class="amount ing-amount">${moneyExact(isrRetenidoMes)}</span></div>
+      <div class="stat-row"><span><strong>${isrNetoAPagar >= 0 ? "ISR neto a pagar" : "ISR a favor (saldo para el próximo mes)"}</strong></span><span class="amount ing-amount ${isrNetoAPagar >= 0 ? "negative" : "positive"}"><strong>${moneyExact(Math.abs(isrNetoAPagar))}</strong></span></div>
+    `;
+  }
 
   // ---- Tabla: emitidas ----
   const emitidasOrdenadas = state.invoicesIssued.slice().sort((a, b) => (b.date || "").localeCompare(a.date || ""));
@@ -1418,11 +1565,14 @@ function renderFacturasView() {
 }
 
 function resetFacturaEmitidaForm() {
+  const perfil = state.currentProfile || {};
+  const ivaDefault = perfil.default_iva_rate != null ? perfil.default_iva_rate : 16;
+  const isrDefault = perfil.default_isr_rate != null ? perfil.default_isr_rate : 1.25;
   document.getElementById("form-factura-emitida").reset();
   document.getElementById("factura-emitida-id").value = "";
   document.getElementById("factura-emitida-fecha").value = todayISO();
-  document.getElementById("factura-emitida-iva-rate").value = "16";
-  document.getElementById("factura-emitida-isr-rate").value = "1.25";
+  document.getElementById("factura-emitida-iva-rate").value = String(ivaDefault);
+  document.getElementById("factura-emitida-isr-rate").value = String(isrDefault);
   document.getElementById("factura-emitida-submit-btn").textContent = "Agregar factura";
   document.getElementById("factura-emitida-cancel-btn").hidden = true;
 }
@@ -1891,7 +2041,10 @@ privacyBtn.addEventListener("click", () => {
   if (isPrivacyOn()) {
     const pass = prompt("Contraseña para ver los ingresos:");
     if (pass === null) return;
-    if (pass !== PRIVACY_PASSWORD) {
+    // Contraseña personal (configúrala en "Mi perfil") o la general de
+    // respaldo — cualquiera de las dos funciona.
+    const personal = state.currentProfile && state.currentProfile.privacy_password;
+    if (pass !== PRIVACY_PASSWORD && (!personal || pass !== personal)) {
       alert("Contraseña incorrecta.");
       return;
     }

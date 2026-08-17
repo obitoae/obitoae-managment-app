@@ -38,6 +38,8 @@
     <button id="btn-show-signup" type="button" class="btn-link-toggle">¿Eres nuevo? Crear una cuenta</button>
 
     <form id="signup-form" hidden>
+      <label>Nombre</label>
+      <input type="text" id="signup-name" required autocomplete="name">
       <label>Correo</label>
       <input type="email" id="signup-email" required autocomplete="username">
       <label>Contraseña</label>
@@ -54,7 +56,7 @@
 <div id="cover-screen" class="cover-screen" hidden>
   <div class="cover-content">
     <p class="cover-eyebrow">Obitoae Management</p>
-    <h1 class="cover-name">Eduardo</h1>
+    <h1 class="cover-name" id="cover-name">Eduardo</h1>
     <p class="cover-sub" id="cover-fecha"></p>
     <button id="btn-cover-ingresar" class="btn-cover-ingresar">Ingresar</button>
   </div>
@@ -103,11 +105,50 @@
       </div>
     </nav>
     <div class="sidebar-footer">
-      <div id="user-info" class="user-info" hidden></div>
+      <button id="user-info" class="user-info" hidden></button>
       <button id="btn-privacy-toggle" class="btn-logout btn-privacy">🙈 Ocultar ingresos</button>
       <button id="logout-btn" class="btn-logout">Cerrar sesión</button>
     </div>
   </aside>
+
+  <!-- ============== MODAL: MI PERFIL ============== -->
+  <div id="perfil-modal" class="modal-overlay" hidden>
+    <div class="modal-card">
+      <h3>Mi perfil</h3>
+      <form id="form-perfil">
+        <label>Nombre</label>
+        <input type="text" id="perfil-nombre">
+
+        <label>Contraseña de privacidad personal (opcional)</label>
+        <input type="password" id="perfil-privacy-password" placeholder="Déjalo vacío para no tener una propia" autocomplete="new-password">
+        <p class="muted" style="margin-top:4px;">Se usa para revelar los ingresos ocultos. Es opcional — si no la configuras, sigue funcionando la contraseña general.</p>
+
+        <div id="perfil-regimen-wrap">
+          <label>Régimen fiscal</label>
+          <select id="perfil-regimen">
+            <option value="">Sin especificar</option>
+            <option value="RESICO">RESICO (Régimen Simplificado de Confianza)</option>
+            <option value="Persona Física - Actividad Empresarial">Persona Física - Actividad Empresarial</option>
+            <option value="Sueldos y Salarios">Sueldos y Salarios</option>
+            <option value="Otro">Otro</option>
+          </select>
+
+          <label>Tasa de IVA por default en tus facturas (%)</label>
+          <input type="number" id="perfil-iva-default" step="0.01" placeholder="ej. 16">
+
+          <label>Tasa de ISR retenido por default (%)</label>
+          <input type="number" id="perfil-isr-default" step="0.01" placeholder="ej. 1.25">
+          <p class="muted" style="margin-top:4px;">Solo son el valor inicial que se rellena al crear una factura — siempre puedes cambiarlo en cada factura individual.</p>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" id="perfil-cancel-btn" class="btn-cancel-edit">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+        <p id="perfil-error" class="error-text" hidden></p>
+      </form>
+    </div>
+  </div>
 
   <main class="main">
 
@@ -226,7 +267,7 @@
         <h3>Tus clientes</h3>
         <div class="table-scroll">
         <table class="data-table">
-          <thead><tr><th>Nombre</th><th>Notas</th><th>Activo</th><th></th></tr></thead>
+          <thead><tr><th>Nombre</th><th>Notas</th><th>Activo</th><th>Cuenta de portal</th><th></th></tr></thead>
           <tbody id="tabla-clientes"></tbody>
         </table>
         </div>
@@ -453,7 +494,7 @@
       </div>
       <p class="muted" id="facturas-resumen-nota" style="margin-top: -8px; margin-bottom: 20px;"></p>
 
-      <div class="panel">
+      <div class="panel" id="resico-panel">
         <h3>ISR retenido vs. ISR que tú pagas (RESICO)</h3>
         <p class="muted" style="margin-top: -8px;">
           Son dos cosas distintas: el <strong>ISR retenido</strong> es lo que tus clientes te descuentan y ya quedó a tu favor.
@@ -468,7 +509,7 @@
       <!-- ---- Emitidas ---- -->
       <div class="panel">
         <h3>Nueva factura emitida</h3>
-        <p class="muted" style="margin-top: -8px;">El % de IVA e ISR depende de cada cliente — captúralo caso por caso (ej. algunos clientes solo retienen ISR y no llevan IVA). Si tributas en RESICO y quien te paga es una persona moral (una empresa), lo normal es que te retengan 1.25% de ISR sobre el subtotal — ese 1.25% ya prellenado abajo es la referencia más común, pero confírmalo con tu contador si tienes dudas.</p>
+        <p class="muted" style="margin-top: -8px;">El % de IVA e ISR depende de cada cliente — captúralo caso por caso (ej. algunos clientes solo retienen ISR y no llevan IVA). Abajo se prellenan tus tasas por default configuradas en "Mi perfil"; si aún no las configuras, se usa 16% de IVA y 1.25% de ISR (la referencia más común para RESICO cuando quien te paga es una persona moral) — siempre puedes cambiarlo en cada factura y confirmarlo con tu contador.</p>
         <form id="form-factura-emitida" class="form-grid">
           <input type="hidden" id="factura-emitida-id">
           <div><label>Cliente</label><select id="factura-emitida-cliente" required></select></div>

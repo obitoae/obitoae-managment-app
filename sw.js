@@ -3,8 +3,17 @@
 // llamadas a Supabase y a las funciones /api/* SIEMPRE van directo a la red
 // (nunca se cachean), para que los datos siempre estén al día.
 
-const CACHE_NAME = "obitoae-shell-v1";
-const SHELL_FILES = ["/", "/index.html", "/style.css", "/app.js", "/config.js", "/manifest.json"];
+const CACHE_NAME = "obitoae-shell-v2";
+const SHELL_FILES = [
+  "/",
+  "/index.html",
+  "/style.css",
+  "/app.js",
+  "/config.js",
+  "/manifest.json",
+  "/portal.html",
+  "/portal.js",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
