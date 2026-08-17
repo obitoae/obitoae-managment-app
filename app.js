@@ -186,6 +186,24 @@ function corteRangeLabel(periodKey) {
 // (se guarda en el perfil de cada quien — ver "Mi perfil")
 // ============================================================
 const DEFAULT_ACCENT = "#a0bb37";
+const DEFAULT_SECONDARY = "#1b1b1a";
+
+// El color secundario (barra lateral / login / portada) solo se puede elegir
+// de esta lista — a diferencia del acento, aquí no dejamos cualquier color
+// libre porque esas pantallas tienen texto blanco/gris fijo por diseño; si
+// alguien pusiera un color muy claro, ese texto dejaría de leerse. Por eso
+// las 8 opciones son todas oscuras. Cada una trae su propio "-2" (un tono
+// apenas más claro, para la tarjeta de login y el fondo de la portada).
+const SECONDARY_PRESETS = {
+  "#1b1b1a": "#262622",
+  "#16233a": "#1f2f4d",
+  "#241b36": "#322648",
+  "#16241a": "#213321",
+  "#2e1620": "#3d1f2b",
+  "#2a2018": "#392c21",
+  "#22262b": "#2e333a",
+  "#142726": "#1d3634",
+};
 
 function hexToRgb(hex) {
   let h = String(hex || "").replace("#", "").trim();
@@ -234,6 +252,8 @@ const THEME_MODE_TOKENS = {
 function applyTheme() {
   const perfil = state.currentProfile || {};
   const accent = /^#[0-9a-fA-F]{6}$/.test(perfil.theme_color || "") ? perfil.theme_color : DEFAULT_ACCENT;
+  const secondary = SECONDARY_PRESETS[perfil.theme_secondary_color] ? perfil.theme_secondary_color : DEFAULT_SECONDARY;
+  const secondary2 = SECONDARY_PRESETS[secondary] || SECONDARY_PRESETS[DEFAULT_SECONDARY];
   const mode = perfil.theme_mode === "dark" ? "dark" : "light";
   const tokens = THEME_MODE_TOKENS[mode];
 
@@ -242,6 +262,8 @@ function applyTheme() {
   root.setProperty("--green-soft", mixHex(accent, "#ffffff", 0.25));
   root.setProperty("--green-bg", mode === "dark" ? mixHex(accent, tokens.cardBg, 0.78) : mixHex(accent, "#ffffff", 0.85));
   root.setProperty("--on-accent", onAccentColor(accent));
+  root.setProperty("--dark", secondary);
+  root.setProperty("--dark-2", secondary2);
   root.setProperty("--body-bg", tokens.bodyBg);
   root.setProperty("--card-bg", tokens.cardBg);
   root.setProperty("--input-bg", tokens.inputBg);
@@ -495,6 +517,21 @@ perfilColorSwatches.forEach((btn) => {
 });
 perfilColorCustom.addEventListener("input", () => setPerfilColorSeleccionado(perfilColorCustom.value));
 
+const perfilColor2Input = document.getElementById("perfil-color2");
+const perfilColor2Swatches = document.querySelectorAll("#perfil-color2-swatches .color-swatch");
+
+function setPerfilColor2Seleccionado(hex) {
+  const valido = SECONDARY_PRESETS[hex] ? hex : DEFAULT_SECONDARY;
+  perfilColor2Input.value = valido;
+  perfilColor2Swatches.forEach((btn) => {
+    btn.classList.toggle("selected", btn.dataset.color.toLowerCase() === valido.toLowerCase());
+  });
+}
+
+perfilColor2Swatches.forEach((btn) => {
+  btn.addEventListener("click", () => setPerfilColor2Seleccionado(btn.dataset.color));
+});
+
 document.getElementById("user-info").addEventListener("click", () => {
   if (!state.currentProfile) return;
   document.getElementById("perfil-nombre").value = state.currentProfile.full_name || "";
@@ -505,6 +542,7 @@ document.getElementById("user-info").addEventListener("click", () => {
   document.getElementById("perfil-corte-dia").value = state.currentProfile.credit_cutoff_day ?? "";
   document.getElementById("perfil-pago-dia").value = state.currentProfile.credit_due_day ?? "";
   setPerfilColorSeleccionado(state.currentProfile.theme_color || DEFAULT_ACCENT);
+  setPerfilColor2Seleccionado(state.currentProfile.theme_secondary_color || DEFAULT_SECONDARY);
   document.getElementById("perfil-tema-modo").value = state.currentProfile.theme_mode === "dark" ? "dark" : "light";
   // El régimen fiscal / tasas de factura y la tarjeta de crédito solo
   // aplican a quien factura o gasta en el negocio (dueño y colaboradores)
@@ -541,6 +579,7 @@ document.getElementById("form-perfil").addEventListener("submit", async (e) => {
       ? Number(document.getElementById("perfil-pago-dia").value)
       : null,
     theme_color: /^#[0-9a-fA-F]{6}$/.test(perfilColorInput.value) ? perfilColorInput.value : null,
+    theme_secondary_color: SECONDARY_PRESETS[perfilColor2Input.value] ? perfilColor2Input.value : null,
     theme_mode: document.getElementById("perfil-tema-modo").value === "dark" ? "dark" : "light",
   };
 
