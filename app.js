@@ -247,8 +247,9 @@ async function loadCurrentProfile() {
     infoEl.hidden = false;
   }
 
-  const coverNameEl = document.getElementById("cover-name");
-  if (coverNameEl && nombre) coverNameEl.textContent = nombre;
+  // Nota: la portada ("By Eduardo Valentin") es fija para todos — ya no se
+  // personaliza con el nombre de quien entra. El saludo que sí cambia por
+  // persona está adentro, en "Inicio" ("Bienvenido, ...").
 
   // Ahora que ya sabemos si tiene contraseña de privacidad propia, mostramos
   // (o no) el botón de ocultar montos.
