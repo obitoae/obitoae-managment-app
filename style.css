@@ -167,7 +167,8 @@ input, select, button { font-family: var(--font-body); }
   border-radius: 8px; cursor: pointer; font-size: 14px; font-family: var(--font-body);
   display: flex; align-items: center; gap: 10px; transition: background 0.12s ease, border-color 0.12s ease;
 }
-.nav-icon { font-size: 15px; width: 18px; text-align: center; flex-shrink: 0; line-height: 1; }
+.nav-icon { width: 18px; height: 18px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.nav-icon svg { width: 17px; height: 17px; display: block; }
 .nav-label { flex: 1; }
 .nav-item:hover { background: #2f2f29; }
 .nav-item.active {
