@@ -3,6 +3,6 @@
 export const SUPABASE_URL = "https://fnwezdfgypocwgngxjxn.supabase.co";
 export const SUPABASE_ANON_KEY = "sb_publishable_NDpdN6mCEHFLjBaNAhVQBw_4L84i8Ia";
 
-// Contraseña extra para volver a mostrar los ingresos cuando los ocultes.
-// Cámbiala por la que tú quieras (no tiene que ser la misma que tu login).
-export const PRIVACY_PASSWORD = "caleb070316";
+// Nota: la contraseña para ocultar/mostrar montos ya no es general — ahora
+// cada quien configura la suya propia (opcional) desde "Mi perfil" dentro
+// de la app. Este archivo ya no necesita nada más para esa función.

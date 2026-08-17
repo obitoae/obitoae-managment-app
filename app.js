@@ -1,5 +1,5 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { SUPABASE_URL, SUPABASE_ANON_KEY, PRIVACY_PASSWORD } from "./config.js";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -55,9 +55,23 @@ function downloadICS(filename, events) {
   URL.revokeObjectURL(url);
 }
 
-// Regla de pago de tarjeta: el pago del corte que cierra el día 26 de un mes
-// vence el día 5 del mes siguiente.
+// El día de corte y el día límite de pago son configurables por persona
+// (en "Mi perfil") — si alguien no los configura, se usan 26 y 5, que era
+// el comportamiento fijo de antes.
+function getCorteDay() {
+  const d = state.currentProfile && Number(state.currentProfile.credit_cutoff_day);
+  return d && d >= 1 && d <= 31 ? d : 26;
+}
+
+function getDueDay() {
+  const d = state.currentProfile && Number(state.currentProfile.credit_due_day);
+  return d && d >= 1 && d <= 31 ? d : 5;
+}
+
+// Regla de pago de tarjeta: el pago del corte que cierra el día configurado
+// de un mes vence el día límite configurado del mes siguiente.
 function fechaPagoCorte(periodKey) {
+  const dueDay = getDueDay();
   const [y, m] = periodKey.split("-").map(Number);
   let payYear = y;
   let payMonth = m + 1;
@@ -65,12 +79,13 @@ function fechaPagoCorte(periodKey) {
     payMonth = 1;
     payYear += 1;
   }
-  return `${payYear}-${String(payMonth).padStart(2, "0")}-05`;
+  return `${payYear}-${String(payMonth).padStart(2, "0")}-${String(dueDay).padStart(2, "0")}`;
 }
 
 function fechaCorteCierre(periodKey) {
+  const corteDay = getCorteDay();
   const [y, m] = periodKey.split("-").map(Number);
-  return `${y}-${String(m).padStart(2, "0")}-26`;
+  return `${y}-${String(m).padStart(2, "0")}-${String(corteDay).padStart(2, "0")}`;
 }
 
 const MESES_ES = [
@@ -123,13 +138,14 @@ function fechaCortaES(fechaISO) {
   return `${d} de ${MESES_ES[m - 1]}`;
 }
 
-// ---- Cortes de tarjeta de crédito (cierran el día 26 de cada mes) ----
+// ---- Cortes de tarjeta de crédito (cierran el día configurado de cada mes) ----
 function cortePeriodKey(dateStr) {
   if (!dateStr) return null;
+  const corteDay = getCorteDay();
   const [y, m, d] = dateStr.split("-").map(Number);
   let year = y;
   let month = m; // 1-12
-  if (d > 26) {
+  if (d > corteDay) {
     month += 1;
     if (month > 12) {
       month = 1;
@@ -144,6 +160,8 @@ function currentCorteKey() {
 }
 
 function corteRangeLabel(periodKey) {
+  const corteDay = getCorteDay();
+  const inicio = corteDay >= 28 ? 1 : corteDay + 1;
   const [y, m] = periodKey.split("-").map(Number);
   let prevMonth = m - 1;
   let prevYear = y;
@@ -151,7 +169,7 @@ function corteRangeLabel(periodKey) {
     prevMonth = 12;
     prevYear -= 1;
   }
-  return `Corte del 27 de ${MESES_ES[prevMonth - 1]} al 26 de ${MESES_ES[m - 1]} ${y}`;
+  return `Corte del ${inicio} de ${MESES_ES[prevMonth - 1]} al ${corteDay} de ${MESES_ES[m - 1]} ${y}`;
 }
 
 let state = {
@@ -222,6 +240,10 @@ async function loadCurrentProfile() {
 
   const coverNameEl = document.getElementById("cover-name");
   if (coverNameEl && nombre) coverNameEl.textContent = nombre;
+
+  // Ahora que ya sabemos si tiene contraseña de privacidad propia, mostramos
+  // (o no) el botón de ocultar montos.
+  if (typeof refreshPrivacyUI === "function") refreshPrivacyUI();
 }
 
 // Portada: se muestra siempre después de entrar, antes de la app. Los datos
@@ -348,6 +370,7 @@ document.getElementById("logout-btn").addEventListener("click", async () => {
   state.currentProfile = null;
   const infoEl = document.getElementById("user-info");
   if (infoEl) infoEl.hidden = true;
+  if (typeof refreshPrivacyUI === "function") refreshPrivacyUI();
   showLogin();
 });
 
@@ -356,6 +379,7 @@ document.getElementById("logout-btn").addEventListener("click", async () => {
 // ============================================================
 const perfilModal = document.getElementById("perfil-modal");
 const perfilRegimenWrap = document.getElementById("perfil-regimen-wrap");
+const perfilCreditoWrap = document.getElementById("perfil-credito-wrap");
 
 document.getElementById("user-info").addEventListener("click", () => {
   if (!state.currentProfile) return;
@@ -364,9 +388,13 @@ document.getElementById("user-info").addEventListener("click", () => {
   document.getElementById("perfil-regimen").value = state.currentProfile.tax_regime || "";
   document.getElementById("perfil-iva-default").value = state.currentProfile.default_iva_rate ?? "";
   document.getElementById("perfil-isr-default").value = state.currentProfile.default_isr_rate ?? "";
-  // El régimen fiscal / tasas de factura solo aplican a quien factura
-  // (dueño y colaboradores) — un cliente no necesita configurar esto.
+  document.getElementById("perfil-corte-dia").value = state.currentProfile.credit_cutoff_day ?? "";
+  document.getElementById("perfil-pago-dia").value = state.currentProfile.credit_due_day ?? "";
+  // El régimen fiscal / tasas de factura y la tarjeta de crédito solo
+  // aplican a quien factura o gasta en el negocio (dueño y colaboradores)
+  // — un cliente no necesita configurar esto.
   perfilRegimenWrap.hidden = state.currentProfile.role === "client";
+  if (perfilCreditoWrap) perfilCreditoWrap.hidden = state.currentProfile.role === "client";
   document.getElementById("perfil-error").hidden = true;
   perfilModal.hidden = false;
 });
@@ -389,6 +417,12 @@ document.getElementById("form-perfil").addEventListener("submit", async (e) => {
       : null,
     default_isr_rate: document.getElementById("perfil-isr-default").value
       ? Number(document.getElementById("perfil-isr-default").value)
+      : null,
+    credit_cutoff_day: document.getElementById("perfil-corte-dia").value
+      ? Number(document.getElementById("perfil-corte-dia").value)
+      : null,
+    credit_due_day: document.getElementById("perfil-pago-dia").value
+      ? Number(document.getElementById("perfil-pago-dia").value)
       : null,
   };
 
@@ -609,7 +643,9 @@ function applyMobileTableLabels() {
 // INICIO / BIENVENIDA
 // ============================================================
 function renderInicioView() {
-  document.getElementById("inicio-saludo").textContent = `${saludoSegunHora()}, Eduardo`;
+  const nombreCompleto = (state.currentProfile && state.currentProfile.full_name) || "";
+  const primerNombreInicio = nombreCompleto.trim().split(" ")[0];
+  document.getElementById("inicio-saludo").textContent = `${saludoSegunHora()}${primerNombreInicio ? ", " + primerNombreInicio : ""}`;
   document.getElementById("inicio-fecha").textContent = fechaLargaHoy();
 
   const hoy = todayISO();
@@ -2021,40 +2057,56 @@ function renderDashboard() {
 }
 
 // ============================================================
-// PRIVACIDAD (ocultar montos de ingresos con blur + contraseña)
+// PRIVACIDAD (ocultar montos con blur + contraseña — 100% opcional, cada
+// quien la activa configurando su propia contraseña en "Mi perfil". Quien
+// no la configura nunca ve nada oculto ni ve el botón.)
 // ============================================================
 const PRIVACY_KEY = "obitoae_privacy_hidden";
 const privacyBtn = document.getElementById("btn-privacy-toggle");
 
+function privacyEnabledForUser() {
+  return !!(state.currentProfile && state.currentProfile.privacy_password);
+}
+
 function isPrivacyOn() {
+  if (!privacyEnabledForUser()) return false; // sin contraseña propia, nunca se oculta nada
   const v = localStorage.getItem(PRIVACY_KEY);
-  return v === null ? true : v === "1"; // oculto por default hasta que se desbloquee con la contraseña
+  return v === "1"; // visible por default — solo se oculta si tú lo activaste antes en este dispositivo
 }
 
 function setPrivacy(on) {
   appEl.classList.toggle("privacy-on", on);
   localStorage.setItem(PRIVACY_KEY, on ? "1" : "0");
-  privacyBtn.textContent = on ? "🙈 Ingresos ocultos" : "🙈 Ocultar ingresos";
+  if (privacyBtn) privacyBtn.textContent = on ? "🙈 Montos ocultos" : "🙈 Ocultar mis montos";
 }
 
-privacyBtn.addEventListener("click", () => {
-  if (isPrivacyOn()) {
-    const pass = prompt("Contraseña para ver los ingresos:");
-    if (pass === null) return;
-    // Contraseña personal (configúrala en "Mi perfil") o la general de
-    // respaldo — cualquiera de las dos funciona.
-    const personal = state.currentProfile && state.currentProfile.privacy_password;
-    if (pass !== PRIVACY_PASSWORD && (!personal || pass !== personal)) {
-      alert("Contraseña incorrecta.");
-      return;
-    }
-    setPrivacy(false);
-  } else {
-    setPrivacy(true);
-  }
-});
+// Vuelve a evaluar si este usuario tiene la privacidad habilitada (se llama
+// después de cargar/actualizar el perfil, y al cerrar sesión).
+function refreshPrivacyUI() {
+  const enabled = privacyEnabledForUser();
+  if (privacyBtn) privacyBtn.hidden = !enabled;
+  setPrivacy(isPrivacyOn());
+}
 
-setPrivacy(isPrivacyOn());
+if (privacyBtn) {
+  privacyBtn.addEventListener("click", () => {
+    if (!privacyEnabledForUser()) return;
+    if (isPrivacyOn()) {
+      const pass = prompt("Tu contraseña de privacidad para ver tus montos:");
+      if (pass === null) return;
+      const personal = state.currentProfile && state.currentProfile.privacy_password;
+      if (!personal || pass !== personal) {
+        alert("Contraseña incorrecta.");
+        return;
+      }
+      setPrivacy(false);
+    } else {
+      setPrivacy(true);
+    }
+  });
+}
+
+refreshPrivacyUI();
 
 // ============================================================
 // INICIO
