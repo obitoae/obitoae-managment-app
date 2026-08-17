@@ -373,6 +373,29 @@ async function loadCurrentProfile() {
   if (typeof refreshPrivacyUI === "function") refreshPrivacyUI();
 
   applyAccountTypeUI();
+  applyRepartoVisibility();
+}
+
+// "Reparto de ingresos" es una sección pensada nada más para Eduardo (sus
+// propias reglas de reparto) — aunque los datos ya son privados por cuenta
+// como todo lo demás, aquí además se esconde la pestaña del menú para
+// cualquier otra cuenta, para que ni siquiera se note que existe.
+const CORREO_REPARTO = "alexisvalentinrcc@gmail.com";
+
+function esCuentaReparto() {
+  return !!state.currentProfile && (state.currentProfile.email || "").toLowerCase() === CORREO_REPARTO;
+}
+
+function applyRepartoVisibility() {
+  const visible = esCuentaReparto();
+  const navBtn = document.querySelector('.nav-item[data-view="reparto"]');
+  if (navBtn) navBtn.hidden = !visible;
+  if (!visible) {
+    const vistaActiva = document.querySelector(".view:not([hidden])");
+    if (vistaActiva && vistaActiva.id === "view-reparto" && typeof switchView === "function") {
+      switchView("inicio");
+    }
+  }
 }
 
 // ============================================================
