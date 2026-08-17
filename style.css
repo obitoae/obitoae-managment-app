@@ -98,7 +98,7 @@ input, select, button { font-family: var(--font-body); }
   font-family: var(--font-body); margin: 0 0 6px; font-weight: 500;
 }
 .cover-name {
-  color: var(--green); font-family: var(--font-display); font-weight: 700;
+  color: #fff; font-family: var(--font-display); font-weight: 700;
   font-size: 160px; letter-spacing: 0.01em; line-height: 1; margin: 0;
 }
 .cover-sub { color: #8d9180; font-size: 14px; margin: 10px 0 30px; font-family: var(--font-body); }
