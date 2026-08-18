@@ -913,19 +913,21 @@ function accountBalance(accountId) {
   return Number(cuenta.starting_balance || 0) + ingresos - gastos;
 }
 // Rendimiento estimado desde rate_start_date (o desde que se creó la cuenta,
-// si no se puso fecha) hasta ahora mismo, con la tasa anual que le pusiste.
-// Es un cálculo aproximado con interés simple día a día sobre el capital
-// actual de la cuenta — no es el número exacto que calcula tu banco (que
-// puede capitalizar distinto o variar la tasa), pero da una buena idea en
-// vivo de cuánto ha ido generando.
+// si no se puso fecha) hasta hoy, con la tasa anual que le pusiste. Se
+// actualiza por día completo (no por segundo/minuto) — cada vez que abres
+// la app, cuenta cuántos días completos han pasado y te muestra el
+// rendimiento de esos días de golpe. Es un cálculo aproximado con interés
+// simple sobre el capital actual de la cuenta — no es el número exacto que
+// calcula tu banco (que puede capitalizar distinto o variar la tasa), pero
+// da una buena idea de cuánto ha ido generando.
 function accruedYield(accountId) {
   const cuenta = state.accounts.find((a) => a.id === accountId);
   if (!cuenta || !cuenta.annual_rate) return 0;
   const inicio = cuenta.rate_start_date ? new Date(cuenta.rate_start_date + "T00:00:00") : new Date(cuenta.created_at);
   const ahora = new Date();
-  const diasTranscurridos = Math.max(0, (ahora.getTime() - inicio.getTime()) / 86400000);
+  const diasCompletos = Math.max(0, Math.floor((ahora.getTime() - inicio.getTime()) / 86400000));
   const capital = accountBalance(accountId);
-  return capital * (Number(cuenta.annual_rate) / 100 / 365) * diasTranscurridos;
+  return capital * (Number(cuenta.annual_rate) / 100 / 365) * diasCompletos;
 }
 function accountBalanceConRendimiento(accountId) {
   return accountBalance(accountId) + accruedYield(accountId);
@@ -1637,16 +1639,17 @@ function renderCuentasView() {
       .join("") || `<tr><td colspan="7" class="muted">Aún no das de alta ninguna cuenta.</td></tr>`;
 }
 
-// Mientras estés viendo la pestaña "Cuentas", refresca cada segundo para que
-// el rendimiento estimado se vea crecer en vivo (no hace nada si no hay
-// ninguna cuenta con tasa anual configurada, y no pesa: solo repinta esta
-// tabla, no toda la app).
+// El rendimiento se recalcula solo por día completo (no en vivo por
+// segundo) — cada vez que abres la app ya trae contados todos los días que
+// pasaron. Este chequeo cada 5 minutos es solo para el caso de que dejes la
+// pestaña de Cuentas abierta de un día para otro: en cuanto cruza la
+// medianoche, se actualiza sola sin que tengas que recargar la página.
 setInterval(() => {
   const vista = document.getElementById("view-cuentas");
   if (vista && !vista.hidden && state.accounts && state.accounts.some((a) => a.annual_rate)) {
     renderCuentasView();
   }
-}, 1000);
+}, 5 * 60 * 1000);
 
 function resetCuentaForm() {
   document.getElementById("form-cuenta").reset();
