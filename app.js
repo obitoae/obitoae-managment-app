@@ -929,8 +929,17 @@ function accruedYield(accountId) {
   const capital = accountBalance(accountId);
   return capital * (Number(cuenta.annual_rate) / 100 / 365) * diasCompletos;
 }
+// Rendimiento total a mostrar: lo que ya quedó "congelado" (de antes de tu
+// último depósito con el botón "Meter dinero") + lo que se ha generado desde
+// entonces a la fecha. Así, meter dinero nuevo nunca borra ni infla lo que
+// ya se había generado con el capital anterior.
+function totalAccruedYield(accountId) {
+  const cuenta = state.accounts.find((a) => a.id === accountId);
+  const congelado = cuenta ? Number(cuenta.locked_yield || 0) : 0;
+  return congelado + accruedYield(accountId);
+}
 function accountBalanceConRendimiento(accountId) {
-  return accountBalance(accountId) + accruedYield(accountId);
+  return accountBalance(accountId) + totalAccruedYield(accountId);
 }
 
 // ---- Guardar con manejo de errores: si Supabase rechaza el insert/update
@@ -1621,7 +1630,7 @@ function renderCuentasView() {
         const gastos = visibleExpenses()
           .filter((g) => g.account_id === a.id)
           .reduce((sum, g) => sum + Number(g.amount || 0), 0);
-        const rendimiento = accruedYield(a.id);
+        const rendimiento = totalAccruedYield(a.id);
         return `
     <tr>
       <td>${a.name}</td>
@@ -1631,13 +1640,43 @@ function renderCuentasView() {
       <td class="ing-amount">${a.annual_rate ? `${moneyExact(rendimiento)} <span class="muted">(${a.annual_rate}% anual)</span>` : "—"}</td>
       <td class="ing-amount">${money(accountBalanceConRendimiento(a.id))}</td>
       <td>
+        <input type="number" step="0.01" id="deposito-input-${a.id}" placeholder="Monto" style="width:90px">
+        <button class="btn-deposito" data-id="${a.id}">Meter dinero</button>
+      </td>
+      <td>
         <button class="btn-edit" data-id="${a.id}" data-kind="accounts">Editar</button>
         <button class="btn-delete" data-id="${a.id}" data-kind="accounts">Eliminar</button>
       </td>
     </tr>`;
       })
-      .join("") || `<tr><td colspan="7" class="muted">Aún no das de alta ninguna cuenta.</td></tr>`;
+      .join("") || `<tr><td colspan="8" class="muted">Aún no das de alta ninguna cuenta.</td></tr>`;
 }
+
+// "Meter dinero": suma el depósito directo al saldo inicial de la cuenta,
+// pero ANTES de sumarlo, congela (guarda) el rendimiento que ya se había
+// generado con el capital de antes y reinicia la fecha de cálculo a hoy.
+// Así el dinero nuevo nunca aparenta haber estado generando intereses desde
+// el inicio, y lo que ya se había generado no se pierde ni se recalcula mal.
+document.addEventListener("click", async (e) => {
+  if (!e.target.matches(".btn-deposito")) return;
+  if (viewAsUserId() !== state.currentUserId) return; // solo lectura mientras ves la cuenta de otra persona
+  const accountId = e.target.dataset.id;
+  const input = document.getElementById(`deposito-input-${accountId}`);
+  const monto = parseFloat(input.value);
+  if (!monto || monto <= 0) return;
+  const cuenta = state.accounts.find((a) => a.id === accountId);
+  if (!cuenta) return;
+  const rendimientoAntesDeMeter = accruedYield(accountId);
+  const row = {
+    starting_balance: Number(cuenta.starting_balance || 0) + monto,
+    locked_yield: Number(cuenta.locked_yield || 0) + rendimientoAntesDeMeter,
+    rate_start_date: todayISO(),
+  };
+  const ok = await saveRow("accounts", accountId, row);
+  if (!ok) return;
+  await loadAll();
+  renderAll();
+});
 
 // El rendimiento se recalcula solo por día completo (no en vivo por
 // segundo) — cada vez que abres la app ya trae contados todos los días que
