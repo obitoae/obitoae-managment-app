@@ -914,6 +914,24 @@ function accountBalance(accountId) {
     .reduce((sum, g) => sum + Number(g.amount || 0), 0);
   return Number(cuenta.starting_balance || 0) + ingresos - gastos;
 }
+// Rendimiento estimado desde rate_start_date (o desde que se creó la cuenta,
+// si no se puso fecha) hasta ahora mismo, con la tasa anual que le pusiste.
+// Es un cálculo aproximado con interés simple día a día sobre el capital
+// actual de la cuenta — no es el número exacto que calcula tu banco (que
+// puede capitalizar distinto o variar la tasa), pero da una buena idea en
+// vivo de cuánto ha ido generando.
+function accruedYield(accountId) {
+  const cuenta = state.accounts.find((a) => a.id === accountId);
+  if (!cuenta || !cuenta.annual_rate) return 0;
+  const inicio = cuenta.rate_start_date ? new Date(cuenta.rate_start_date + "T00:00:00") : new Date(cuenta.created_at);
+  const ahora = new Date();
+  const diasTranscurridos = Math.max(0, (ahora.getTime() - inicio.getTime()) / 86400000);
+  const capital = accountBalance(accountId);
+  return capital * (Number(cuenta.annual_rate) / 100 / 365) * diasTranscurridos;
+}
+function accountBalanceConRendimiento(accountId) {
+  return accountBalance(accountId) + accruedYield(accountId);
+}
 
 // ---- Guardar con manejo de errores: si Supabase rechaza el insert/update
 // (por ejemplo porque falta correr el SQL de esa tabla), avisa en vez de
@@ -1603,21 +1621,34 @@ function renderCuentasView() {
         const gastos = visibleExpenses()
           .filter((g) => g.account_id === a.id)
           .reduce((sum, g) => sum + Number(g.amount || 0), 0);
+        const rendimiento = accruedYield(a.id);
         return `
     <tr>
       <td>${a.name}</td>
       <td class="ing-amount">${money(a.starting_balance)}</td>
       <td class="ing-amount">${money(ingresos)}</td>
       <td class="ing-amount">${money(gastos)}</td>
-      <td class="ing-amount">${money(accountBalance(a.id))}</td>
+      <td class="ing-amount">${a.annual_rate ? `${moneyExact(rendimiento)} <span class="muted">(${a.annual_rate}% anual)</span>` : "—"}</td>
+      <td class="ing-amount">${money(accountBalanceConRendimiento(a.id))}</td>
       <td>
         <button class="btn-edit" data-id="${a.id}" data-kind="accounts">Editar</button>
         <button class="btn-delete" data-id="${a.id}" data-kind="accounts">Eliminar</button>
       </td>
     </tr>`;
       })
-      .join("") || `<tr><td colspan="6" class="muted">Aún no das de alta ninguna cuenta.</td></tr>`;
+      .join("") || `<tr><td colspan="7" class="muted">Aún no das de alta ninguna cuenta.</td></tr>`;
 }
+
+// Mientras estés viendo la pestaña "Cuentas", refresca cada segundo para que
+// el rendimiento estimado se vea crecer en vivo (no hace nada si no hay
+// ninguna cuenta con tasa anual configurada, y no pesa: solo repinta esta
+// tabla, no toda la app).
+setInterval(() => {
+  const vista = document.getElementById("view-cuentas");
+  if (vista && !vista.hidden && state.accounts && state.accounts.some((a) => a.annual_rate)) {
+    renderCuentasView();
+  }
+}, 1000);
 
 function resetCuentaForm() {
   document.getElementById("form-cuenta").reset();
@@ -1632,6 +1663,8 @@ document.getElementById("form-cuenta").addEventListener("submit", async (e) => {
   const row = {
     name: document.getElementById("cuenta-nombre").value.trim(),
     starting_balance: parseFloat(document.getElementById("cuenta-saldo-inicial").value) || 0,
+    annual_rate: parseFloat(document.getElementById("cuenta-tasa").value) || null,
+    rate_start_date: document.getElementById("cuenta-fecha-tasa").value || todayISO(),
   };
   if (!row.name) return;
   const ok = await saveRow("accounts", id, row);
@@ -2505,6 +2538,8 @@ document.addEventListener("click", (e) => {
     document.getElementById("cuenta-id").value = a.id;
     document.getElementById("cuenta-nombre").value = a.name;
     document.getElementById("cuenta-saldo-inicial").value = a.starting_balance;
+    document.getElementById("cuenta-tasa").value = a.annual_rate || "";
+    document.getElementById("cuenta-fecha-tasa").value = a.rate_start_date || "";
     document.getElementById("cuenta-submit-btn").textContent = "Guardar cambios";
     document.getElementById("cuenta-cancel-btn").hidden = false;
     switchView("cuentas");

@@ -567,19 +567,21 @@
           <input type="hidden" id="cuenta-id">
           <div><label>Nombre</label><input type="text" id="cuenta-nombre" placeholder="Ej. Santander, Nu Turbo, Efectivo" required></div>
           <div><label>Saldo inicial</label><input type="number" step="0.01" id="cuenta-saldo-inicial" placeholder="Lo que tienes ahí ahorita" value="0"></div>
+          <div><label>Rendimiento anual % (opcional)</label><input type="number" step="0.01" id="cuenta-tasa" placeholder="Ej. 13 — solo si esta cuenta genera rendimiento"></div>
+          <div><label>¿Desde cuándo genera? (opcional)</label><input type="date" id="cuenta-fecha-tasa"></div>
           <div class="form-actions">
             <button type="submit" id="cuenta-submit-btn" class="btn btn-primary">Agregar cuenta</button>
             <button type="button" id="cuenta-cancel-btn" class="btn-cancel-edit" hidden>Cancelar edición</button>
           </div>
         </form>
-        <p class="muted" style="margin-top:8px;">El saldo inicial es el punto de partida — de ahí en adelante sube con los ingresos que marques a esta cuenta y baja con los gastos.</p>
+        <p class="muted" style="margin-top:8px;">El saldo inicial es el punto de partida — de ahí en adelante sube con los ingresos que marques a esta cuenta y baja con los gastos. Si le pones un rendimiento anual, el "Saldo actual" incluye una estimación en vivo de lo que ha generado desde la fecha que elijas (o desde que diste de alta la cuenta, si la dejas vacía) — es un cálculo aproximado, no el número exacto de tu banco.</p>
       </div>
 
       <div class="panel">
         <h3>Tus cuentas</h3>
         <div class="table-scroll">
         <table class="data-table">
-          <thead><tr><th>Nombre</th><th>Saldo inicial</th><th>Ingresos</th><th>Gastos</th><th>Saldo actual</th><th></th></tr></thead>
+          <thead><tr><th>Nombre</th><th>Saldo inicial</th><th>Ingresos</th><th>Gastos</th><th>Rendimiento estimado</th><th>Saldo actual</th><th></th></tr></thead>
           <tbody id="tabla-cuentas"></tbody>
         </table>
         </div>
