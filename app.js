@@ -3,15 +3,13 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// Sin redondear a peso cerrado en ningún lado de la app — siempre se
+// muestran los centavos exactos (mínimo 2 decimales), para que las cifras
+// que ves aquí cuadren con las de tu banco/tarjeta al centavo.
 const money = (n) =>
-  "$" + (Number(n) || 0).toLocaleString("es-MX", { maximumFractionDigits: 0 });
-
-// Para Facturas: nada de redondear a peso cerrado — si redondeamos cada cifra
-// por separado (subtotal, IVA, total) por separado, pueden dejar de cuadrar
-// entre sí aunque el cálculo interno esté bien. Aquí siempre se muestran los
-// centavos exactos.
-const moneyExact = (n) =>
   "$" + (Number(n) || 0).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const moneyExact = money;
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const currentPeriodKey = () => new Date().toISOString().slice(0, 7); // "YYYY-MM"
