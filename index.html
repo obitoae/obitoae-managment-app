@@ -112,6 +112,7 @@
           <button class="nav-item nav-subitem nav-business-only" data-view="ingresos"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17 9 11l4 4 8-9"/><path d="M15 6h6v6"/></svg></span><span class="nav-label">Ingresos</span></button>
           <button class="nav-item nav-subitem" data-view="gastos"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l6 6 4-4 8 9"/><path d="M15 18h6v-6"/></svg></span><span class="nav-label">Gastos</span></button>
           <button class="nav-item nav-subitem nav-business-only" data-view="facturas"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v4h4"/><path d="M8 12h8M8 15.5h8M8 8.5h4"/></svg></span><span class="nav-label">Facturas</span></button>
+          <button class="nav-item nav-subitem" data-view="cuentas"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10 12 4l9 6"/><path d="M5 10v9M9 10v9M15 10v9M19 10v9"/><path d="M3 19h18"/></svg></span><span class="nav-label">Cuentas</span></button>
           <button class="nav-item nav-subitem" data-view="credito"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5.5" width="19" height="13" rx="2"/><path d="M2.5 10h19"/><path d="M6 15h4"/></svg></span><span class="nav-label">Tarjeta de crédito</span></button>
           <button class="nav-item nav-subitem" data-view="reparto"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2.5" width="14" height="19" rx="2"/><line x1="8" y1="6.5" x2="16" y2="6.5"/><circle cx="8.4" cy="11" r="0.9"/><circle cx="12" cy="11" r="0.9"/><circle cx="15.6" cy="11" r="0.9"/><circle cx="8.4" cy="14.6" r="0.9"/><circle cx="12" cy="14.6" r="0.9"/><circle cx="15.6" cy="14.6" r="0.9"/><circle cx="8.4" cy="18.2" r="0.9"/><circle cx="12" cy="18.2" r="0.9"/><circle cx="15.6" cy="18.2" r="0.9"/></svg></span><span class="nav-label">Reparto de ingresos</span></button>
           <button class="nav-item nav-subitem nav-business-only" data-view="ahorro"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V14"/><path d="M10 20V9"/><path d="M16 20V4"/></svg></span><span class="nav-label">Ahorro</span></button>
@@ -460,6 +461,7 @@
               <option>Transferencia</option><option>Efectivo</option><option>Tarjeta</option><option>Otro</option>
             </select>
           </div>
+          <div><label>¿A qué cuenta se fue? (opcional)</label><select id="ingreso-cuenta"><option value="">— Ninguna —</option></select></div>
           <div><label>Fecha</label><input type="date" id="ingreso-fecha" required></div>
           <div class="checkbox-row"><label><input type="checkbox" id="ingreso-recurrente"> Es recurrente</label></div>
           <div class="checkbox-row"><label><input type="checkbox" id="ingreso-facturado"> Ya emití factura</label></div>
@@ -490,7 +492,7 @@
         <h3>Historial de ingresos (este mes)</h3>
         <div class="table-scroll">
         <table class="data-table">
-          <thead><tr><th>Fecha</th><th>Cliente</th><th>Servicio</th><th>Canal</th><th>Monto</th><th>IVA</th><th>Método</th><th>Recurrente</th><th>Facturado</th><th></th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Cliente</th><th>Servicio</th><th>Canal</th><th>Monto</th><th>IVA</th><th>Método</th><th>Cuenta</th><th>Recurrente</th><th>Facturado</th><th></th></tr></thead>
           <tbody id="tabla-ingresos"></tbody>
         </table>
         </div>
@@ -529,6 +531,7 @@
               <option>Transferencia</option><option>Efectivo</option><option>Tarjeta de débito</option><option>Tarjeta de crédito</option><option>Otro</option>
             </select>
           </div>
+          <div><label>¿De qué cuenta salió? (opcional)</label><select id="gasto-cuenta"><option value="">— Ninguna —</option></select></div>
           <div><label>Fecha</label><input type="date" id="gasto-fecha" required></div>
           <div class="checkbox-row gasto-business-only"><label><input type="checkbox" id="gasto-facturado"> Tengo factura de este gasto</label></div>
           <div class="gasto-business-only"><label>Folio de factura (opcional)</label><input type="text" id="gasto-folio"></div>
@@ -544,8 +547,40 @@
         <h3>Historial de gastos (este mes)</h3>
         <div class="table-scroll">
         <table class="data-table">
-          <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Cliente</th><th>Monto</th><th>Recurrencia</th><th>Método</th><th>Facturado</th><th></th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Cliente</th><th>Monto</th><th>Recurrencia</th><th>Método</th><th>Cuenta</th><th>Facturado</th><th></th></tr></thead>
           <tbody id="tabla-gastos"></tbody>
+        </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- CUENTAS (saldos reales, ligadas a Ingresos/Gastos) ---------- -->
+    <section id="view-cuentas" class="view" hidden>
+      <header class="view-header">
+        <h2>Cuentas</h2>
+        <p class="muted">Tus tarjetas y cuentas reales (Santander, Nu Turbo, efectivo, etc.). Cuando marcas a qué cuenta se fue un ingreso o de cuál salió un gasto, el saldo se ajusta solo.</p>
+      </header>
+
+      <div class="panel solo-lectura-otro">
+        <h3>Agregar cuenta</h3>
+        <form id="form-cuenta" class="form-grid">
+          <input type="hidden" id="cuenta-id">
+          <div><label>Nombre</label><input type="text" id="cuenta-nombre" placeholder="Ej. Santander, Nu Turbo, Efectivo" required></div>
+          <div><label>Saldo inicial</label><input type="number" step="0.01" id="cuenta-saldo-inicial" placeholder="Lo que tienes ahí ahorita" value="0"></div>
+          <div class="form-actions">
+            <button type="submit" id="cuenta-submit-btn" class="btn btn-primary">Agregar cuenta</button>
+            <button type="button" id="cuenta-cancel-btn" class="btn-cancel-edit" hidden>Cancelar edición</button>
+          </div>
+        </form>
+        <p class="muted" style="margin-top:8px;">El saldo inicial es el punto de partida — de ahí en adelante sube con los ingresos que marques a esta cuenta y baja con los gastos.</p>
+      </div>
+
+      <div class="panel">
+        <h3>Tus cuentas</h3>
+        <div class="table-scroll">
+        <table class="data-table">
+          <thead><tr><th>Nombre</th><th>Saldo inicial</th><th>Ingresos</th><th>Gastos</th><th>Saldo actual</th><th></th></tr></thead>
+          <tbody id="tabla-cuentas"></tbody>
         </table>
         </div>
       </div>

@@ -301,6 +301,7 @@ let state = {
   invoicesReceived: [],
   incomeRules: [],
   incomeSplits: [],
+  accounts: [],
   profiles: [],
   currentUserId: null,
   currentProfile: null, // { id, email, full_name, role }
@@ -772,6 +773,7 @@ function loadAllQueries() {
     supabase.from("invoices_received").select("*").order("date", { ascending: false }),
     supabase.from("income_rules").select("*").order("sort_order"),
     supabase.from("income_splits").select("*").order("date", { ascending: false }),
+    supabase.from("accounts").select("*").order("name"),
     supabase.from("profiles").select("*").order("full_name"),
   ];
 }
@@ -789,6 +791,7 @@ async function loadAll() {
     "invoices_received",
     "income_rules",
     "income_splits",
+    "accounts",
     "profiles",
   ];
   let results = await Promise.all(loadAllQueries());
@@ -831,6 +834,7 @@ async function loadAll() {
     { data: invoicesReceived },
     { data: incomeRules },
     { data: incomeSplits },
+    { data: accounts },
     { data: profiles },
   ] = results;
   state.clients = clients || [];
@@ -844,6 +848,7 @@ async function loadAll() {
   state.invoicesReceived = invoicesReceived || [];
   state.incomeRules = incomeRules || [];
   state.incomeSplits = incomeSplits || [];
+  state.accounts = accounts || [];
   state.profiles = profiles || [];
 }
 
@@ -890,6 +895,25 @@ function visibleIncomeRules() {
 function visibleIncomeSplits() {
   return state.incomeSplits.filter((s) => s.owner_id === viewAsUserId());
 }
+function visibleAccounts() {
+  return state.accounts.filter((a) => a.owner_id === viewAsUserId());
+}
+function cuentaName(accountId) {
+  if (!accountId) return "—";
+  const cuenta = state.accounts.find((a) => a.id === accountId);
+  return cuenta ? cuenta.name : "—";
+}
+function accountBalance(accountId) {
+  const cuenta = state.accounts.find((a) => a.id === accountId);
+  if (!cuenta) return 0;
+  const ingresos = visibleIncome()
+    .filter((i) => i.account_id === accountId)
+    .reduce((sum, i) => sum + Number(i.amount || 0), 0);
+  const gastos = visibleExpenses()
+    .filter((g) => g.account_id === accountId)
+    .reduce((sum, g) => sum + Number(g.amount || 0), 0);
+  return Number(cuenta.starting_balance || 0) + ingresos - gastos;
+}
 
 // ---- Guardar con manejo de errores: si Supabase rechaza el insert/update
 // (por ejemplo porque falta correr el SQL de esa tabla), avisa en vez de
@@ -921,11 +945,13 @@ async function saveRow(table, id, row) {
 function renderAll() {
   aplicarModoVerComo();
   renderClientSelects();
+  renderAccountSelects();
   renderClientesView();
   renderTareasView();
   renderTareasHistoricoView();
   renderIngresosView();
   renderGastosView();
+  renderCuentasView();
   renderCreditoView();
   renderRepartoView();
   renderAhorroView();
@@ -1070,6 +1096,22 @@ function renderClientSelects() {
     `<option value="">— Ninguno —</option>` + opts;
   const facturaClienteEl = document.getElementById("factura-emitida-cliente");
   if (facturaClienteEl) facturaClienteEl.innerHTML = opts;
+}
+
+function renderAccountSelects() {
+  const opts = visibleAccounts().map((a) => `<option value="${a.id}">${a.name}</option>`).join("");
+  const ingresoCuentaEl = document.getElementById("ingreso-cuenta");
+  if (ingresoCuentaEl) {
+    const actual = ingresoCuentaEl.value;
+    ingresoCuentaEl.innerHTML = `<option value="">— Ninguna —</option>` + opts;
+    ingresoCuentaEl.value = actual;
+  }
+  const gastoCuentaEl = document.getElementById("gasto-cuenta");
+  if (gastoCuentaEl) {
+    const actual = gastoCuentaEl.value;
+    gastoCuentaEl.innerHTML = `<option value="">— Ninguna —</option>` + opts;
+    gastoCuentaEl.value = actual;
+  }
 }
 
 function renderClientesView() {
@@ -1405,6 +1447,7 @@ function renderIngresosView() {
       <td class="ing-amount">${money(i.amount)}</td>
       <td class="ing-amount">${money(i.iva)}</td>
       <td>${i.payment_method || ""}</td>
+      <td>${cuentaName(i.account_id)}</td>
       <td>${i.is_recurring ? "Sí" : "No"}</td>
       <td><span class="invoiced-tag ${i.invoiced ? "si" : "no"}">${i.invoiced ? `Sí${i.invoice_folio ? " · " + i.invoice_folio : ""}` : "No"}</span></td>
       <td>
@@ -1413,7 +1456,7 @@ function renderIngresosView() {
       </td>
     </tr>`
       )
-      .join("") || `<tr><td colspan="10" class="muted">Aún no registras ingresos este mes.</td></tr>`;
+      .join("") || `<tr><td colspan="11" class="muted">Aún no registras ingresos este mes.</td></tr>`;
 }
 
 function resetIngresoForm() {
@@ -1434,6 +1477,7 @@ document.getElementById("form-ingreso").addEventListener("submit", async (e) => 
     amount: parseFloat(document.getElementById("ingreso-monto").value) || 0,
     iva: parseFloat(document.getElementById("ingreso-iva").value) || 0,
     payment_method: document.getElementById("ingreso-metodo").value,
+    account_id: document.getElementById("ingreso-cuenta").value || null,
     is_recurring: document.getElementById("ingreso-recurrente").checked,
     date: document.getElementById("ingreso-fecha").value,
     invoiced: document.getElementById("ingreso-facturado").checked,
@@ -1498,6 +1542,7 @@ function renderGastosView() {
       <td class="ing-amount">${money(g.amount)}</td>
       <td>${g.recurrence}</td>
       <td>${g.payment_method || ""}</td>
+      <td>${cuentaName(g.account_id)}</td>
       <td><span class="invoiced-tag ${g.invoiced ? "si" : "no"}">${g.invoiced ? `Sí${g.invoice_folio ? " · " + g.invoice_folio : ""}` : "No"}</span></td>
       <td>
         <button class="btn-edit" data-id="${g.id}" data-kind="expenses">Editar</button>
@@ -1505,7 +1550,7 @@ function renderGastosView() {
       </td>
     </tr>`
     )
-    .join("") || `<tr><td colspan="9" class="muted">Aún no registras gastos este mes.</td></tr>`;
+    .join("") || `<tr><td colspan="10" class="muted">Aún no registras gastos este mes.</td></tr>`;
 }
 
 function resetGastoForm() {
@@ -1528,6 +1573,7 @@ document.getElementById("form-gasto").addEventListener("submit", async (e) => {
     amount: parseFloat(document.getElementById("gasto-monto").value) || 0,
     recurrence: document.getElementById("gasto-recurrencia").value,
     payment_method: document.getElementById("gasto-metodo").value,
+    account_id: document.getElementById("gasto-cuenta").value || null,
     date: document.getElementById("gasto-fecha").value,
     invoiced: document.getElementById("gasto-facturado").checked,
     invoice_folio: document.getElementById("gasto-folio").value.trim() || null,
@@ -1541,6 +1587,61 @@ document.getElementById("form-gasto").addEventListener("submit", async (e) => {
 });
 
 document.getElementById("gasto-cancel-btn").addEventListener("click", resetGastoForm);
+
+// ============================================================
+// CUENTAS (saldos reales, ligadas a Ingresos/Gastos)
+// ============================================================
+function renderCuentasView() {
+  const tbody = document.getElementById("tabla-cuentas");
+  const cuentas = visibleAccounts();
+  tbody.innerHTML =
+    cuentas
+      .map((a) => {
+        const ingresos = visibleIncome()
+          .filter((i) => i.account_id === a.id)
+          .reduce((sum, i) => sum + Number(i.amount || 0), 0);
+        const gastos = visibleExpenses()
+          .filter((g) => g.account_id === a.id)
+          .reduce((sum, g) => sum + Number(g.amount || 0), 0);
+        return `
+    <tr>
+      <td>${a.name}</td>
+      <td class="ing-amount">${money(a.starting_balance)}</td>
+      <td class="ing-amount">${money(ingresos)}</td>
+      <td class="ing-amount">${money(gastos)}</td>
+      <td class="ing-amount">${money(accountBalance(a.id))}</td>
+      <td>
+        <button class="btn-edit" data-id="${a.id}" data-kind="accounts">Editar</button>
+        <button class="btn-delete" data-id="${a.id}" data-kind="accounts">Eliminar</button>
+      </td>
+    </tr>`;
+      })
+      .join("") || `<tr><td colspan="6" class="muted">Aún no das de alta ninguna cuenta.</td></tr>`;
+}
+
+function resetCuentaForm() {
+  document.getElementById("form-cuenta").reset();
+  document.getElementById("cuenta-id").value = "";
+  document.getElementById("cuenta-submit-btn").textContent = "Agregar cuenta";
+  document.getElementById("cuenta-cancel-btn").hidden = true;
+}
+
+document.getElementById("form-cuenta").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = document.getElementById("cuenta-id").value;
+  const row = {
+    name: document.getElementById("cuenta-nombre").value.trim(),
+    starting_balance: parseFloat(document.getElementById("cuenta-saldo-inicial").value) || 0,
+  };
+  if (!row.name) return;
+  const ok = await saveRow("accounts", id, row);
+  if (!ok) return;
+  resetCuentaForm();
+  await loadAll();
+  renderAll();
+});
+
+document.getElementById("cuenta-cancel-btn").addEventListener("click", resetCuentaForm);
 
 // ============================================================
 // TARJETA DE CRÉDITO (cortes + pagos quincenales)
@@ -2366,6 +2467,7 @@ document.addEventListener("click", (e) => {
     document.getElementById("ingreso-monto").value = i.amount;
     document.getElementById("ingreso-iva").value = i.iva;
     document.getElementById("ingreso-metodo").value = i.payment_method;
+    document.getElementById("ingreso-cuenta").value = i.account_id || "";
     document.getElementById("ingreso-fecha").value = i.date;
     document.getElementById("ingreso-recurrente").checked = i.is_recurring;
     document.getElementById("ingreso-facturado").checked = !!i.invoiced;
@@ -2388,6 +2490,7 @@ document.addEventListener("click", (e) => {
     document.getElementById("gasto-monto").value = g.amount;
     document.getElementById("gasto-recurrencia").value = g.recurrence;
     document.getElementById("gasto-metodo").value = g.payment_method;
+    document.getElementById("gasto-cuenta").value = g.account_id || "";
     document.getElementById("gasto-fecha").value = g.date;
     document.getElementById("gasto-facturado").checked = !!g.invoiced;
     document.getElementById("gasto-folio").value = g.invoice_folio || "";
@@ -2396,6 +2499,16 @@ document.addEventListener("click", (e) => {
     document.getElementById("gasto-cancel-btn").hidden = false;
     switchView("gastos");
     document.getElementById("form-gasto").scrollIntoView({ behavior: "smooth", block: "center" });
+  } else if (kind === "accounts") {
+    const a = state.accounts.find((x) => x.id === id);
+    if (!a) return;
+    document.getElementById("cuenta-id").value = a.id;
+    document.getElementById("cuenta-nombre").value = a.name;
+    document.getElementById("cuenta-saldo-inicial").value = a.starting_balance;
+    document.getElementById("cuenta-submit-btn").textContent = "Guardar cambios";
+    document.getElementById("cuenta-cancel-btn").hidden = false;
+    switchView("cuentas");
+    document.getElementById("form-cuenta").scrollIntoView({ behavior: "smooth", block: "center" });
   } else if (kind === "tasks") {
     const t = state.tasks.find((x) => x.id === id);
     if (!t) return;
