@@ -1139,6 +1139,12 @@ function renderAccountSelects() {
     gastoCuentaEl.innerHTML = `<option value="">— Ninguna —</option>` + opts;
     gastoCuentaEl.value = actual;
   }
+  const fondoCuentaEl = document.getElementById("fondo-cuenta");
+  if (fondoCuentaEl) {
+    const actual = fondoCuentaEl.value;
+    fondoCuentaEl.innerHTML = `<option value="">— Ninguna, llevar a mano con depósitos/retiros —</option>` + opts;
+    fondoCuentaEl.value = actual;
+  }
 }
 
 function renderClientesView() {
@@ -1772,7 +1778,10 @@ function renderVerComoSelector() {
   const sel = document.getElementById("ver-como-select");
   if (!wrap || !sel) return;
 
-  const esDueño = state.currentProfile && state.currentProfile.role === "owner";
+  // Además de ser "owner", tiene que ser tu cuenta exacta — así, aunque en
+  // algún momento otra persona tenga rol de dueño, nadie más que tú puede
+  // usar este selector para ver las cuentas de los demás.
+  const esDueño = state.currentProfile && state.currentProfile.role === "owner" && esCuentaReparto();
   wrap.hidden = !esDueño;
   if (!esDueño) {
     state.viewAsId = null;
@@ -2178,7 +2187,15 @@ document.getElementById("form-calc-reparto").addEventListener("submit", async (e
 // ============================================================
 document.getElementById("movimiento-fecha").value = todayISO();
 
+// Si el fondo está vinculado a una cuenta real (sección Cuentas), su
+// acumulado ya no se suma a mano con Depósitos/Retiros — se toma el saldo
+// real de esa cuenta (capital + rendimiento, si tiene tasa configurada),
+// para no llevar el mismo dinero contado dos veces en dos lugares.
 function fondoAcumulado(fondoId) {
+  const fondo = state.savingsFunds.find((f) => f.id === fondoId);
+  if (fondo && fondo.account_id) {
+    return accountBalanceConRendimiento(fondo.account_id);
+  }
   return state.savingsMoves
     .filter((m) => m.fund_id === fondoId)
     .reduce((s, m) => s + (m.type === "Retiro" ? -Number(m.amount || 0) : Number(m.amount || 0)), 0);
@@ -2210,7 +2227,7 @@ function renderAhorroView() {
         }
         return `
     <tr>
-      <td class="ing-amount">${f.name}</td>
+      <td class="ing-amount">${f.name}${f.account_id ? ` <span class="muted">(vinculado a ${cuentaName(f.account_id)})</span>` : ""}</td>
       <td class="ing-amount">${f.goal_amount ? money(f.goal_amount) : "—"}</td>
       <td class="ing-amount">${money(acumulado)}</td>
       <td>${avance}</td>
@@ -2255,6 +2272,7 @@ document.getElementById("form-fondo").addEventListener("submit", async (e) => {
   const row = {
     name: document.getElementById("fondo-nombre").value.trim(),
     goal_amount: parseFloat(document.getElementById("fondo-meta").value) || null,
+    account_id: document.getElementById("fondo-cuenta").value || null,
   };
   if (!row.name) return;
   const ok = await saveRow("savings_funds", id, row);
@@ -2604,6 +2622,7 @@ document.addEventListener("click", (e) => {
     document.getElementById("fondo-id").value = f.id;
     document.getElementById("fondo-nombre").value = f.name;
     document.getElementById("fondo-meta").value = f.goal_amount || "";
+    document.getElementById("fondo-cuenta").value = f.account_id || "";
     document.getElementById("fondo-submit-btn").textContent = "Guardar cambios";
     document.getElementById("fondo-cancel-btn").hidden = false;
     switchView("ahorro");
